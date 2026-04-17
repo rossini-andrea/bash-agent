@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+exec curl http://localhost:41080/v1/chat/completions \
+        -H "Content-Type: application/json" \
+        -d @- \
+        --silent \
+        --connect-timeout 20 --keepalive-time 7000 --max-time 7000
+

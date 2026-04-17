@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+
+# --- Strict Mode Configuration ---
+# Exit immediately if a command exits with a non-zero status
+set -e
+# Treat unset variables as an error
+set -u
+# Catch errors in pipelines (e.g., cmd1 | cmd2 fails if cmd1 fails)
+set -o pipefail
+# Disable globbing for safety (optional, but good for file handling)
+set -f
+
+BA_AGENT_CONTEXT=$(mktemp)
+BA_AGENT_TEMP_CONTEXT=$(mktemp)
+BA_PATH=~/devel/bash-agent
+export PATH=$PATH:$BA_PATH
+
+# --- Cleanup / Signal Handling ---
+# Run this when the script exits (normal or error)
+cleanup() {
+    rm $BA_AGENT_CONTEXT
+    rm $BA_AGENT_TEMP_CONTEXT
+}
+trap cleanup EXIT
+
+# --- Main Script Logic ---
+main() {
+    echo '{
+        "tools": [],
+        "messages": [{
+            "role": "system",
+            "content": "You are an helpful assistant with access to tools."
+        }]
+    }' > $BA_AGENT_CONTEXT
+
+    for t in $(ls $BA_PATH/tools); do
+        jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs "$($BA_PATH/tools/$t -h)" > $BA_AGENT_TEMP_CONTEXT
+        cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
+    done
+
+    answer="{}"
+
+    while true
+    do
+        tool_calls=$(echo $answer | jq '.tool_calls | length')
+
+        if [[ "$tool_calls" == "0" ]]; then
+            # Read user prompt if there is no tool call
+            read -p "
+> " -r prompt
+
+            jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
+                $BA_AGENT_CONTEXT \
+                --args "$prompt" > $BA_AGENT_TEMP_CONTEXT
+            cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
+        else
+            # Call all tools requested by the LLM
+            echo $answer | jq -r '.tool_calls[] | "\(.function.name) \(.function.arguments) \(.id)"' | while IFS= read -r line; do
+                set -- $line
+                name="$1"
+                arguments="$2"
+                tool_call_id="$3"
+
+                echo Calling $name with $arguments >&2
+                set +e
+                result=$( \
+                    echo $arguments | \
+                    jq -r 'to_entries | map("-\(.key) \(.value)") | join(" ")' | xargs $BA_PATH/tools/$name 2>&1
+                )
+                exit_status=$?
+                set -e
+
+                if [ $exit_status -ne 0 ]; then
+                    jq '.messages += [{
+                        role: "tool",
+                        tool_call_id: $ARGS.positional[0],
+                        content: $ARGS.positional[1],
+                        additional_info: {
+                            failure_reason: $ARGS.positional[2],
+                        }
+                    }]' \
+                    $BA_AGENT_CONTEXT \
+                    --args "$tool_call_id" "$result" "Exit status: $exit_status" \
+                    > $BA_AGENT_TEMP_CONTEXT
+                else
+                    jq '.messages += [{role: "tool", tool_call_id: $ARGS.positional[0], content: $ARGS.positional[1] }]' \
+                    $BA_AGENT_CONTEXT \
+                    --args "$tool_call_id" "$result" \
+                > $BA_AGENT_TEMP_CONTEXT
+                fi
+
+                cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
+            done
+        fi
+
+        #cat $BA_AGENT_CONTEXT | jq >&2
+
+        # Call the LLM with the new context
+        response=$(cat $BA_AGENT_CONTEXT | ba-curl)
+
+        # echo $response >&2
+        answer=$(echo $response | jq '.choices[0].message | {role: .role, content: .content, tool_calls: .tool_calls}')
+
+        jq '.messages += [ $ARGS.positional[0] ]' \
+            $BA_AGENT_CONTEXT \
+            --jsonargs "$answer" > $BA_AGENT_TEMP_CONTEXT
+        cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
+
+        echo "" >&2
+        echo $answer | jq -r '.content'
+    done
+}
+
+# Run main function
+main "$@"
+

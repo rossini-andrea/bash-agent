@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+show_help() {
+echo '{
+      "type": "function",
+      "function": {
+        "name": "read",
+        "description": "Reads the entire content of a file.",
+        "parameters": {
+          "type": "object",
+          "required": ["p"],
+          "properties": {
+            "p": {"type": "string", "description": "The path of the file relative to the working directory, or an absolute path."}
+          }
+        }
+      }
+    }'
+
+ exit 0
+}
+
+pflag=
+path=
+# Parse options
+while getopts p:h opt
+do
+    case $opt in
+    h)  show_help;;
+    p)  pflag=1
+        path="$OPTARG";;
+    ?)  exit 2;;
+    esac
+done
+
+# Check for --help flag separately (not handled by getopts)
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    show_help
+fi
+
+cat $path
+
