@@ -10,10 +10,23 @@ set -o pipefail
 # Disable globbing for safety (optional, but good for file handling)
 set -f
 
+# Detect input source
+is_a_tty=
+if [ -t 0 ]; then
+    is_a_tty=1
+fi
+
 BA_AGENT_CONTEXT=$(mktemp)
 BA_AGENT_TEMP_CONTEXT=$(mktemp)
 BA_PATH=~/devel/bash-agent
-export PATH=$PATH:$BA_PATH
+
+# --- LOGGING HELPER ---
+# Simply redirects all parameters to stderr
+log() {
+    if [[ $is_a_tty == "1" ]]; then
+        echo $@ >&2
+    fi
+}
 
 # --- Cleanup / Signal Handling ---
 # Run this when the script exits (normal or error)
@@ -40,19 +53,48 @@ main() {
 
     answer="{}"
 
+    # If the prompt is piped in, consume the entire stdin
+    # and do a call
+    if [[ ! $is_a_tty == "1" ]]; then
+        jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
+            $BA_AGENT_CONTEXT \
+            --args "$(cat)" > $BA_AGENT_TEMP_CONTEXT
+        cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
+
+        response=$(cat $BA_AGENT_CONTEXT | $BA_PATH/ba-curl)
+
+        answer=$(echo $response | jq '.choices[0].message | {role: .role, content: .content, tool_calls: .tool_calls}')
+
+        jq '.messages += [ $ARGS.positional[0] ]' \
+            $BA_AGENT_CONTEXT \
+            --jsonargs "$answer" > $BA_AGENT_TEMP_CONTEXT
+        cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
+
+        if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
+            log ""
+            echo $answer | jq -r '.content'
+        fi
+    fi
+
+    # --- MAIN SHELL LOOP ---
     while true
     do
         tool_calls=$(echo $answer | jq '.tool_calls | length')
 
-        if [[ "$tool_calls" == "0" ]]; then
+        if [[ "$tool_calls" == "0" && $is_a_tty == "1" ]]; then
             # Read user prompt if there is no tool call
-            read -p "
-> " -r prompt
+            # and it's running interactively
+            log ""
+            log "------ $PWD ------"
+            read -r -e -p "> " prompt
 
             jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
                 $BA_AGENT_CONTEXT \
                 --args "$prompt" > $BA_AGENT_TEMP_CONTEXT
             cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
+        elif [[ "$tool_calls" == "0" ]]; then
+            # Exit the non interactive execution
+            exit 0
         else
             # Call all tools requested by the LLM
             echo $answer | jq -r '.tool_calls[] | "\(.function.name) \(.function.arguments) \(.id)"' | while IFS= read -r line; do
@@ -61,7 +103,7 @@ main() {
                 arguments="$2"
                 tool_call_id="$3"
 
-                echo Calling $name with $arguments >&2
+                log "Calling $name with $arguments"
                 set +e
                 result=$( \
                     echo $arguments | \
@@ -93,12 +135,9 @@ main() {
             done
         fi
 
-        #cat $BA_AGENT_CONTEXT | jq >&2
-
         # Call the LLM with the new context
-        response=$(cat $BA_AGENT_CONTEXT | ba-curl)
+        response=$(cat $BA_AGENT_CONTEXT | $BA_PATH/ba-curl)
 
-        # echo $response >&2
         answer=$(echo $response | jq '.choices[0].message | {role: .role, content: .content, tool_calls: .tool_calls}')
 
         jq '.messages += [ $ARGS.positional[0] ]' \
@@ -106,8 +145,10 @@ main() {
             --jsonargs "$answer" > $BA_AGENT_TEMP_CONTEXT
         cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
 
-        echo "" >&2
-        echo $answer | jq -r '.content'
+        if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
+            log ""
+            echo $answer | jq -r '.content'
+        fi
     done
 }
 
