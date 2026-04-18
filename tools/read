@@ -21,13 +21,15 @@ echo '{
 
 pflag=
 path=
+infomode=
 # Parse options
-while getopts p:h opt
+while getopts p:hi opt
 do
     case $opt in
     h)  show_help;;
     p)  pflag=1
         path="$OPTARG";;
+    i)  infomode=1;;
     ?)  exit 2;;
     esac
 done
@@ -35,6 +37,11 @@ done
 # Check for --help flag separately (not handled by getopts)
 if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     show_help
+fi
+
+if [[ "$infomode" == "1" ]]; then
+    echo READ $path >&2
+    exit 0
 fi
 
 cat $path

@@ -12,6 +12,8 @@ set -f
 
 # Detect input source
 is_a_tty=
+interactive=
+
 if [ -t 0 ]; then
     is_a_tty=1
 fi
@@ -117,7 +119,13 @@ main() {
                 arguments="$2"
                 tool_call_id="$3"
 
-                log "Calling $name with $arguments"
+                if [[ $is_a_tty == "1" ]]; then
+                    log ""
+                    echo $arguments | \
+                    jq -r 'to_entries | map("-\(.key) \(.value)") | join(" ")' | \
+                    xargs $BA_PATH/tools/$name -i 2>&1
+                fi
+
                 set +e
                 result=$( \
                     echo $arguments | \
