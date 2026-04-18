@@ -20,6 +20,9 @@ BA_AGENT_CONTEXT=$(mktemp)
 BA_AGENT_TEMP_CONTEXT=$(mktemp)
 BA_PATH=~/devel/bash-agent
 
+response=
+answer=
+
 # --- LOGGING HELPER ---
 # Simply redirects all parameters to stderr
 log() {
@@ -36,6 +39,30 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# --- Swap context ---
+# Swap the file usage for contex/temp context
+swap_context() {
+    c=$BA_AGENT_CONTEXT
+    BA_AGENT_CONTEXT=$BA_AGENT_TEMP_CONTEXT
+    BA_AGENT_TEMP_CONTEXT=$c
+}
+
+call_llm_updatecontext_and_print() {
+    response=$(cat $BA_AGENT_CONTEXT | $BA_PATH/ba-curl)
+
+    answer=$(echo $response | jq '.choices[0].message | {role: .role, content: .content, tool_calls: .tool_calls}')
+
+    jq '.messages += [ $ARGS.positional[0] ]' \
+        $BA_AGENT_CONTEXT \
+        --jsonargs "$answer" > $BA_AGENT_TEMP_CONTEXT
+    swap_context
+
+    if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
+        log ""
+        echo $answer | jq -r '.content'
+    fi
+}
+
 # --- Main Script Logic ---
 main() {
     echo '{
@@ -48,7 +75,7 @@ main() {
 
     for t in $(ls $BA_PATH/tools); do
         jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs "$($BA_PATH/tools/$t -h)" > $BA_AGENT_TEMP_CONTEXT
-        cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
+        swap_context
     done
 
     answer="{}"
@@ -59,21 +86,8 @@ main() {
         jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
             $BA_AGENT_CONTEXT \
             --args "$(cat)" > $BA_AGENT_TEMP_CONTEXT
-        cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
-
-        response=$(cat $BA_AGENT_CONTEXT | $BA_PATH/ba-curl)
-
-        answer=$(echo $response | jq '.choices[0].message | {role: .role, content: .content, tool_calls: .tool_calls}')
-
-        jq '.messages += [ $ARGS.positional[0] ]' \
-            $BA_AGENT_CONTEXT \
-            --jsonargs "$answer" > $BA_AGENT_TEMP_CONTEXT
-        cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
-
-        if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
-            log ""
-            echo $answer | jq -r '.content'
-        fi
+        swap_context
+        call_llm_updatecontext_and_print
     fi
 
     # --- MAIN SHELL LOOP ---
@@ -91,13 +105,13 @@ main() {
             jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
                 $BA_AGENT_CONTEXT \
                 --args "$prompt" > $BA_AGENT_TEMP_CONTEXT
-            cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
+            swap_context
         elif [[ "$tool_calls" == "0" ]]; then
             # Exit the non interactive execution
             exit 0
         else
             # Call all tools requested by the LLM
-            echo $answer | jq -r '.tool_calls[] | "\(.function.name) \(.function.arguments) \(.id)"' | while IFS= read -r line; do
+            while IFS= read -r line; do
                 set -- $line
                 name="$1"
                 arguments="$2"
@@ -107,7 +121,8 @@ main() {
                 set +e
                 result=$( \
                     echo $arguments | \
-                    jq -r 'to_entries | map("-\(.key) \(.value)") | join(" ")' | xargs $BA_PATH/tools/$name 2>&1
+                    jq -r 'to_entries | map("-\(.key) \(.value)") | join(" ")' | \
+                    xargs $BA_PATH/tools/$name 2>&1
                 )
                 exit_status=$?
                 set -e
@@ -131,24 +146,12 @@ main() {
                 > $BA_AGENT_TEMP_CONTEXT
                 fi
 
-                cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
-            done
+                swap_context
+            done < <(echo $answer | jq -r '.tool_calls[] | "\(.function.name) \(.function.arguments) \(.id)"')
         fi
 
         # Call the LLM with the new context
-        response=$(cat $BA_AGENT_CONTEXT | $BA_PATH/ba-curl)
-
-        answer=$(echo $response | jq '.choices[0].message | {role: .role, content: .content, tool_calls: .tool_calls}')
-
-        jq '.messages += [ $ARGS.positional[0] ]' \
-            $BA_AGENT_CONTEXT \
-            --jsonargs "$answer" > $BA_AGENT_TEMP_CONTEXT
-        cp $BA_AGENT_TEMP_CONTEXT $BA_AGENT_CONTEXT
-
-        if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
-            log ""
-            echo $answer | jq -r '.content'
-        fi
+        call_llm_updatecontext_and_print
     done
 }
 
