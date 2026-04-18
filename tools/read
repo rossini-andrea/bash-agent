@@ -8,9 +8,9 @@ echo '{
         "description": "Reads the entire content of a file.",
         "parameters": {
           "type": "object",
-          "required": ["p"],
+          "required": ["f"],
           "properties": {
-            "p": {"type": "string", "description": "The path of the file relative to the working directory, or an absolute path."}
+            "f": {"type": "string", "description": "The path of the file relative to the working directory, or an absolute path."}
           }
         }
       }
@@ -19,15 +19,15 @@ echo '{
  exit 0
 }
 
-pflag=
+fflag=
 path=
 infomode=
 # Parse options
-while getopts p:hi opt
+while getopts f:hi opt
 do
     case $opt in
     h)  show_help;;
-    p)  pflag=1
+    f)  fflag=1
         path="$OPTARG";;
     i)  infomode=1;;
     ?)  exit 2;;
@@ -44,5 +44,5 @@ if [[ "$infomode" == "1" ]]; then
     exit 0
 fi
 
-cat $path
+cat "$path"
 

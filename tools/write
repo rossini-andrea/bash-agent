@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+
+# Show help returns an OpenAI function definition, the engine will attach it to
+# the chat context.
+show_help() {
+echo '{
+      "type": "function",
+      "function": {
+        "name": "write",
+        "description": "Writes the entire content to a file; this tool is the preferred method to create new files.",
+        "parameters": {
+          "type": "object",
+          "required": ["f", "c"],
+          "properties": {
+            "f": {"type": "string", "description": "The path of the file relative to the working directory, or an absolute path. If the file exists, it will be overwritten."},
+            "c": {"type": "string", "description": "The entire string content to write in the file."}
+          }
+        }
+      }
+    }'
+
+ exit 0
+}
+
+# Mandatory infomode flag.
+infomode=
+
+# Add your flags here as required.
+fflag=
+flag=
+cflag=
+content=
+
+# Parse options
+# Add parameters as required. Colon defines the parameter has a value
+while getopts c:f:hi opt
+do
+    case $opt in
+    h)  show_help;;
+    i)  infomode=1;;
+    c)  cflag=1
+        content="$OPTARG";;
+    f)  fflag=1
+        path="$OPTARG";;
+    ?)  exit 2;;
+    esac
+done
+
+# Check for --help flag separately (not handled by getopts)
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    show_help
+fi
+
+# Infomode allows the tool to customize its tool calling log message.
+# Mandatory exit 0 for allowing the engine to ask the user for permission.
+if [[ "$infomode" == "1" ]]; then
+    echo WRITE $path >&2
+    echo $content | head -n 10 >&2
+    echo "..." >&2
+
+    exit 0
+fi
+
+#=============================
+# Your actual code goes here.
+#=============================
+echo "$content" > "$path"
+
