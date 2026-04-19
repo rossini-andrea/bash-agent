@@ -60,8 +60,12 @@ call_llm_updatecontext_and_print() {
     swap_context
 
     if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
-        log ""
-        echo $answer | jq -r '.content'
+        if [[ "$is_a_tty" == "1" ]]; then
+            log ""
+            echo $answer | jq -r '.content' | pandoc -i - -w ansi -o -
+        else
+            echo $answer | jq -r '.content'
+        fi
     fi
 }
 
