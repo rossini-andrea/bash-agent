@@ -65,8 +65,8 @@ echo "$content" > "$patch_file"
 
 # Apply the patch
 # Using -p0 since we provide the exact file path
-# The -q flag reduces verbosity, -f forces application
-result=$(patch -p0 -q -f "$file" < "$patch_file" 2>&1)
+# The -s flag reduces verbosity, -f forces application
+result=$(patch -p0 -f -s "$file" < "$patch_file" 2>&1)
 exit_status=$?
 
 # Clean up

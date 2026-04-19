@@ -65,8 +65,29 @@ call_llm_updatecontext_and_print() {
     fi
 }
 
+# --- Attach file ---
+# Attaches a file to the chat context
+attach() {
+    ls "$1" &&
+        jq '.messages += [{role: "user", content: "\n\n--- File: " + $ARGS.positional[0] + " ---\n" + $ARGS.positional[1] }]' \
+        $BA_AGENT_CONTEXT \
+        --args "$1" "$(cat "$1")" > $BA_AGENT_TEMP_CONTEXT &&
+        swap_context
+}
+
+# --- Attach instructions ---
+# Attaches current project agent instruction file to the chat context
+# If no instructions file is found just succedes silently.
+attach_instructions() {
+    attach ./AGENT.md || \
+        attach ./CLAUDE.md || \
+        attach ./.github/copilot-instructions.md || \
+        true
+}
+
 # --- Main Script Logic ---
 main() {
+    # Attach system prompt to the context
     echo '{
         "tools": [],
         "messages": [{
@@ -75,10 +96,14 @@ main() {
         }]
     }' > $BA_AGENT_CONTEXT
 
+    # Attach tool definitions to the context
     for t in $(ls $BA_PATH/tools); do
         jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs "$($BA_PATH/tools/$t -h)" > $BA_AGENT_TEMP_CONTEXT
         swap_context
     done
+
+    # Attach agent instructions to the context
+    attach_instructions > /dev/null 2>&1
 
     answer="{}"
 
@@ -140,15 +165,15 @@ main() {
                         additional_info: {
                             failure_reason: $ARGS.positional[2],
                         }
-                    }]' \
+                }]' \
                     $BA_AGENT_CONTEXT \
                     --args "$tool_call_id" "$result" "Exit status: $exit_status" \
                     > $BA_AGENT_TEMP_CONTEXT
-                else
-                    jq '.messages += [{role: "tool", tool_call_id: $ARGS.positional[0], content: $ARGS.positional[1] }]' \
+            else
+                jq '.messages += [{role: "tool", tool_call_id: $ARGS.positional[0], content: $ARGS.positional[1] }]' \
                     $BA_AGENT_CONTEXT \
                     --args "$tool_call_id" "$result" \
-                > $BA_AGENT_TEMP_CONTEXT
+                    > $BA_AGENT_TEMP_CONTEXT
                 fi
 
                 swap_context
@@ -162,4 +187,3 @@ main() {
 
 # Run main function
 main "$@"
-
