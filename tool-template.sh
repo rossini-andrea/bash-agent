@@ -5,7 +5,7 @@
 # meaningful, and with no extension.
 # Make the file executable with `chmod +x` or `chmod 755`.
 
-# Show help returns an OpenAI function definition, the engine will attach it to
+# show_help returns an OpenAI function definition, the engine will attach it to
 # the chat context.
 show_help() {
 echo '{
@@ -17,7 +17,7 @@ echo '{
           "type": "object",
           "required": [list of required options],
           "properties": {
-            "A single letter for the parameter name, avoid h and i as they are reserved for the engine.": {"type": "string", "description": "Natural language description of the parameter."}
+            "Parameter name": {"type": "string", "description": "Natural language description of the parameter."}
           }
         }
       }
@@ -29,10 +29,6 @@ echo '{
 # Mandatory infomode flag.
 infomode=
 
-# Add your flags here as required.
-aflag=
-avalue=
-
 # Parse options
 # Add parameters as required. Colon defines the parameter has a value
 while getopts a:hi opt
@@ -40,21 +36,21 @@ do
     case $opt in
     h)  show_help;;
     i)  infomode=1;;
-    a)  aflag=1
-        avalue="$OPTARG";;
     ?)  exit 2;;
     esac
 done
 
-# Check for --help flag separately (not handled by getopts)
-if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-    show_help
-fi
+shift $((OPTIND - 1))
+
+# Example parameter extraction, customize as needed
+param1=$(echo "$@" | jq -r '.param1')
+param2=$(echo "$@" | jq -r '.param2')
 
 # Infomode allows the tool to customize its tool calling log message.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
-    echo tool-name $aflag >&2
+    echo tool-name $param1 >&2
+    echo $param2 but formatted in some weird way >&2
     exit 0
 fi
 

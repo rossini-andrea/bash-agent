@@ -122,16 +122,12 @@ main() {
 
                 if [[ $is_a_tty == "1" ]]; then
                     log ""
-                    echo "$arguments" | \
-                    jq -r 'to_entries | map("-\(.key) \(.value)") | join("\u0000")' | \
-                    xargs -0 $BA_PATH/tools/$name -i 2>&1
+                    $BA_PATH/tools/$name -i "$arguments"
                 fi
 
                 set +e
                 result=$( \
-                    echo "$arguments" | \
-                    jq -r 'to_entries | map("-\(.key) \(.value)") | join("\u0000")' | \
-                    xargs -0 $BA_PATH/tools/$name 2>&1
+                    $BA_PATH/tools/$name "$arguments" 2>&1
                 )
                 exit_status=$?
                 set -e

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# show_help returns an OpenAI function definition, the engine will attach it to
+# the chat context.
 show_help() {
 echo '{
       "type": "function",
@@ -8,9 +10,9 @@ echo '{
         "description": "Reads the entire content of a file.",
         "parameters": {
           "type": "object",
-          "required": ["f"],
+          "required": ["file"],
           "properties": {
-            "f": {"type": "string", "description": "The path of the file relative to the working directory, or an absolute path."}
+            "file": {"type": "string", "description": "The path of the file relative to the working directory, or an absolute path."}
           }
         }
       }
@@ -19,30 +21,33 @@ echo '{
  exit 0
 }
 
-fflag=
-path=
+# Mandatory infomode flag.
 infomode=
+
 # Parse options
-while getopts f:hi opt
+# It is expected to only have h and i
+while getopts hi opt
 do
     case $opt in
     h)  show_help;;
-    f)  fflag=1
-        path="$OPTARG";;
     i)  infomode=1;;
     ?)  exit 2;;
     esac
 done
 
-# Check for --help flag separately (not handled by getopts)
-if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-    show_help
-fi
+shift $((OPTIND - 1))
 
+# Extract parameters
+path=$(echo "$@" | jq -r '.file')
+
+# Infomode allows the tool to customize its tool calling log message.
+# Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
     echo READ $path >&2
     exit 0
 fi
 
+# read is implemented as a simple cat
+# we launched a space rocket to get from the living room to the kitchen
 cat "$path"
 
