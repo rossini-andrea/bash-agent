@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+set -e
+set -u
+set -o pipefail
+
 # show_help returns an OpenAI function definition, the engine will attach it to
 # the chat context.
 show_help() {
@@ -7,17 +11,38 @@ show_help() {
         "type": "function",
         "function": {
             "name": "edit",
-            "description": "Applies a patch to a file. The content parameter must be a unified diff patch in standard format. Use this tool for making precise edits to existing files without rewriting the entire file.",
+            "description": "Applies changes to a file. Use this tool for making precise edits to existing files without rewriting the entire file.",
             "parameters": {
                 "type": "object",
-                "required": ["file", "content"],
+                "required": ["file", "edits"],
                 "properties": {
                     "file": {"type": "string", "description": "The path of the file to edit (relative or absolute path)."},
-                    "content": {"type": "string", "description": "A unified diff patch to apply to the file. The patch should be in standard unified diff format with context lines."}
+                    "edits": {
+                        "type": "array",
+                        "description": "A list of edits to perform on the file.",
+                        "properties": {
+                            "operation": {
+                                "type": "string",
+                                "enum": ["insert", "replace", "delete"],
+                                "description": "Type of edit: \"insert\" adds content before \"from\" line, \"replace\" replaces \"linecount\" lines starting at \"from\", \"delete\" removes \"linecount\" lines starting at \"from\""
+                            },
+                        "from": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Line number (1-indexed) where the edit starts"
+                        },
+                    "linecount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Number of lines to replace/delete. For \"insert\" operation, this should be 0"
+                    },
+                "content": {"type": "string", "description": "The text snippet to insert or replace to the original text."}
+                        }
+                    }
                 }
             }
         }
-}'
+    }'
 
 exit 0
 }
@@ -39,13 +64,12 @@ shift $((OPTIND - 1))
 
 # Extract parameters
 file=$(echo "$@" | jq -r '.file')
-content=$(echo "$@" | jq -r '.content')
+edits=$(echo "$@" | jq -c '.edits')
 
 # Infomode allows the tool to customize its tool calling log message.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
     echo EDIT $file >&2
-    echo "Applying patch with $(echo "$content" | wc -l) lines..." >&2
     exit 0
 fi
 
@@ -53,29 +77,219 @@ fi
 # Your actual code goes here.
 #=============================
 
-# Apply patch with the following options:
-# -p0: Don't strip any leading components from file paths (we provide full path)
-# -q: Quiet mode (less verbose output)
-# -f: Force apply (don't abort on conflicts, but still report)
-# The patch command expects unified diff format
-
-# Create a temporary file for the patch
-patch_file=$(mktemp)
-echo "$content" > "$patch_file"
-
-# Apply the patch
-# Using -p0 since we provide the exact file path
-# The -s flag reduces verbosity, -f forces application
-result=$(patch -p0 -f -s "$file" < "$patch_file" 2>&1)
-exit_status=$?
-
-# Clean up
-rm -f "$patch_file"
-
-if [ $exit_status -eq 0 ]; then
-    echo "Patch applied successfully"
-    exit 0
-else
-    echo "Failed to apply patch: $result"
+# Validate file parameter
+if [[ -z "$file" || "$file" == "null" ]]; then
+    echo "Error: file parameter is required" >&2
     exit 1
 fi
+
+# Check if file exists
+if [[ ! -f "$file" ]]; then
+    echo "Error: File '$file' does not exist" >&2
+    exit 1
+fi
+
+# Parse and validate edits
+edits_count=$(echo "$edits" | jq 'length')
+if [[ "$edits_count" == "0" ]]; then
+    echo "Error: edits array is empty" >&2
+    exit 1
+fi
+
+# Extract all edits into arrays for processing
+declare -a edit_operations
+declare -a edit_from
+declare -a edit_linecount
+declare -a edit_content
+
+for ((i=0; i<edits_count; i++)); do
+    op=$(echo "$edits" | jq -r ".[$i].operation")
+    from=$(echo "$edits" | jq -r ".[$i].from")
+    lc=$(echo "$edits" | jq -r ".[$i].linecount")
+    content=$(echo "$edits" | jq -r ".[$i].content")
+
+    edit_operations+=("$op")
+    edit_from+=("$from")
+    edit_linecount+=("$lc")
+    edit_content+=("$content")
+done
+
+# Validate that all 'from' parameters are sequential (sorted in ascending order)
+prev_from=0
+for ((i=0; i<edits_count; i++)); do
+    current_from=${edit_from[$i]}
+
+ # Validate from is a positive integer
+ if ! [[ "$current_from" =~ ^[0-9]+$ ]] || [[ "$current_from" -lt 1 ]]; then
+     echo "Error: 'from' parameter must be a positive integer (got: $current_from)" >&2
+     exit 1
+ fi
+
+ # Check sequential order (must be strictly increasing)
+ if [[ "$current_from" -le "$prev_from" ]]; then
+     echo "Error: 'from' parameters must be sequential (ascending order). Found $current_from <= $prev_from at edit index $i" >&2
+     exit 1
+ fi
+
+ prev_from=$current_from
+done
+
+# Read the file into an array
+mapfile -t lines < "$file"
+
+# Track line shift (how many lines have been added/removed relative to original)
+line_shift=0
+
+# Process each edit in order
+for ((i=0; i<edits_count; i++)); do
+    op=${edit_operations[$i]}
+    from=${edit_from[$i]}
+    lc=${edit_linecount[$i]}
+    content=${edit_content[$i]}
+
+ # Calculate actual line number accounting for previous shifts
+ actual_from=$((from + line_shift))
+
+ # Validate line number
+ if [[ "$actual_from" -lt 1 ]]; then
+     echo "Error: Line number $actual_from is out of range (file has ${#lines[@]} lines)" >&2
+         exit 1
+ fi
+
+ # Get content lines (split by newline)
+ content_lines=()
+ if [[ -n "$content" ]]; then
+     mapfile -t content_lines <<< "$content"
+ fi
+
+ case "$op" in
+     insert)
+         # Insert content before line 'actual_from'
+         # For insert, linecount should be 0
+         if [[ "$lc" -ne 0 ]]; then
+             echo "Error: 'linecount' must be 0 for 'insert' operation" >&2
+             exit 1
+         fi
+
+ # Build new lines array
+ new_lines=()
+
+ # Copy lines before insert point (1-indexed, so actual_from-1 lines before)
+ for ((j=0; j<actual_from-1 && j<${#lines[@]}; j++)); do
+     new_lines+=("${lines[$j]}")
+ done
+
+ # Add content lines
+ for cl in "${content_lines[@]}"; do
+     new_lines+=("$cl")
+ done
+
+ # Copy remaining lines
+ for ((j=actual_from-1; j<${#lines[@]}; j++)); do
+     new_lines+=("${lines[$j]}")
+ done
+
+ lines=("${new_lines[@]}")
+
+ # Update line shift
+ new_content_lines=${#content_lines[@]}
+     if [[ "$content" == "" ]]; then
+         new_content_lines=0
+     fi
+     line_shift=$((line_shift + new_content_lines))
+
+     ;;
+
+ replace)
+     # Replace 'lc' lines starting at 'actual_from' with content
+     if [[ "$lc" -lt 0 ]]; then
+         echo "Error: 'linecount' must be non-negative for 'replace' operation" >&2
+         exit 1
+     fi
+
+ # Validate we don't go beyond file
+ if (( actual_from > ${#lines[@]} + 1 )); then
+     echo "Error: Line number $actual_from is beyond end of file (file has ${#lines[@]} lines)" >&2
+         exit 1
+ fi
+
+ # Calculate end line (actual_from + lc - 1)
+ end_line=$((actual_from + lc - 1))
+
+ # Build new lines array
+ new_lines=()
+
+ # Copy lines before replace point
+ for ((j=0; j<actual_from-1; j++)); do
+     new_lines+=("${lines[$j]}")
+ done
+
+ # Add content lines
+ for cl in "${content_lines[@]}"; do
+     new_lines+=("$cl")
+ done
+
+ # Copy lines after replaced section
+ for ((j=end_line; j<${#lines[@]}; j++)); do
+     new_lines+=("${lines[$j]}")
+ done
+
+ lines=("${new_lines[@]}")
+
+ # Update line shift
+ new_content_lines=${#content_lines[@]}
+     if [[ "$content" == "" ]]; then
+         new_content_lines=0
+     fi
+     line_shift=$((line_shift + new_content_lines - lc))
+
+     ;;
+
+ delete)
+     # Delete 'lc' lines starting at 'actual_from'
+     if [[ "$lc" -lt 1 ]]; then
+         echo "Error: 'linecount' must be at least 1 for 'delete' operation" >&2
+         exit 1
+     fi
+
+ # Validate we don't go beyond file
+ if [[ "$actual_from" -gt "${#lines[@]}" ]]; then
+     echo "Error: Line number $actual_from is beyond end of file (file has ${#lines[@]} lines)" >&2
+         exit 1
+ fi
+
+ # Calculate end line
+ end_line=$((actual_from + lc - 1))
+
+ # Build new lines array
+ new_lines=()
+
+ # Copy lines before delete point
+ for ((j=0; j<actual_from-1; j++)); do
+     new_lines+=("${lines[$j]}")
+ done
+
+ # Copy lines after deleted section
+ for ((j=end_line; j<${#lines[@]}; j++)); do
+     new_lines+=("${lines[$j]}")
+ done
+
+ lines=("${new_lines[@]}")
+
+ # Update line shift
+ line_shift=$((line_shift - lc))
+
+ ;;
+
+*)
+    echo "Error: Unknown operation '$op'" >&2
+    exit 1
+    ;;
+esac
+done
+
+# Write the modified content back to the file
+printf '%s\n' "${lines[@]}" > "$file"
+
+echo "Successfully edited $file" >&2
+exit 0

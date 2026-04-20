@@ -91,18 +91,17 @@ attach_instructions() {
 # --- Main Script Logic ---
 main() {
     # Attach system prompt to the context
-    echo '{
-        "tools": [],
-        "messages": [{
-            "role": "system",
-            "content": "You are an helpful assistant with access to tools."
+    echo '{}' | jq '.={
+        tools: [],
+        messages: [{
+            role: "system",
+            content: $ARGS.positional[0]
         }]
-    }' > $BA_AGENT_CONTEXT
+    }' --args -- "$(cat "$BA_PATH"/SYSTEM.md)" > $BA_AGENT_CONTEXT
 
-    # Attach tool definitions to the context
+    # Attach tool definitions to the context.
     for t in $(ls $BA_PATH/tools); do
-        jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs -- "$($BA_PATH/tools/$t -h)" > $BA_AGENT_TEMP_CONTEXT
-        swap_context
+        jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs -- "$($BA_PATH/tools/$t -h)" > $BA_AGENT_TEMP_CONTEXT && swap_context || log Ignoring tool: "$t"
     done
 
     # Attach agent instructions to the context

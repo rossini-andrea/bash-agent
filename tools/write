@@ -57,3 +57,4 @@ fi
 #=============================
 echo "$content" > "$path"
 
+echo "Successfully wrote $file" >&2
