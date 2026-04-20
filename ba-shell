@@ -12,7 +12,6 @@ set -f
 
 # Detect input source
 is_a_tty=
-interactive=
 
 if [ -t 0 ]; then
     is_a_tty=1
@@ -56,7 +55,7 @@ call_llm_updatecontext_and_print() {
 
     jq '.messages += [ $ARGS.positional[0] ]' \
         $BA_AGENT_CONTEXT \
-        --jsonargs "$answer" > $BA_AGENT_TEMP_CONTEXT
+        --jsonargs -- "$answer" > $BA_AGENT_TEMP_CONTEXT
     swap_context
 
     if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
@@ -75,7 +74,7 @@ attach() {
     ls "$1" &&
         jq '.messages += [{role: "user", content: "\n\n--- File: " + $ARGS.positional[0] + " ---\n" + $ARGS.positional[1] }]' \
         $BA_AGENT_CONTEXT \
-        --args "$1" "$(cat "$1")" > $BA_AGENT_TEMP_CONTEXT &&
+        --args -- "$1" "$(cat "$1")" > $BA_AGENT_TEMP_CONTEXT &&
         swap_context
 }
 
@@ -102,7 +101,7 @@ main() {
 
     # Attach tool definitions to the context
     for t in $(ls $BA_PATH/tools); do
-        jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs "$($BA_PATH/tools/$t -h)" > $BA_AGENT_TEMP_CONTEXT
+        jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs -- "$($BA_PATH/tools/$t -h)" > $BA_AGENT_TEMP_CONTEXT
         swap_context
     done
 
@@ -116,7 +115,7 @@ main() {
     if [[ ! $is_a_tty == "1" ]]; then
         jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
             $BA_AGENT_CONTEXT \
-            --args "$(cat)" > $BA_AGENT_TEMP_CONTEXT
+            --args -- "$(cat)" > $BA_AGENT_TEMP_CONTEXT
         swap_context
         call_llm_updatecontext_and_print
     fi
@@ -135,7 +134,7 @@ main() {
 
             jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
                 $BA_AGENT_CONTEXT \
-                --args "$prompt" > $BA_AGENT_TEMP_CONTEXT
+                --args  -- "$prompt" > $BA_AGENT_TEMP_CONTEXT
             swap_context
         elif [[ "$tool_calls" == "0" ]]; then
             # Exit the non interactive execution
@@ -155,9 +154,9 @@ main() {
                 fi
 
                 set +e
-                result=$( \
+                result="$( \
                     $BA_PATH/tools/$name "$arguments" 2>&1
-                )
+                )"
                 exit_status=$?
                 set -e
 
@@ -171,12 +170,12 @@ main() {
                         }
                 }]' \
                     $BA_AGENT_CONTEXT \
-                    --args "$tool_call_id" "$result" "Exit status: $exit_status" \
+                    --args -- "$tool_call_id" "$result" "Exit status: $exit_status" \
                     > $BA_AGENT_TEMP_CONTEXT
             else
                 jq '.messages += [{role: "tool", tool_call_id: $ARGS.positional[0], content: $ARGS.positional[1] }]' \
                     $BA_AGENT_CONTEXT \
-                    --args "$tool_call_id" "$result" \
+                    --args -- "$tool_call_id" "$result" \
                     > $BA_AGENT_TEMP_CONTEXT
                 fi
 
