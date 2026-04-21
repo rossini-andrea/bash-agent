@@ -23,7 +23,7 @@ this agent are:
 * bash
 * jq
 * curl
-* pandoc - that's an heavy one, remove the pandoc pipe if you wish.
+* pandoc - optional
 
 ## But I don't like bash
 

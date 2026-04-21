@@ -26,11 +26,16 @@ set -o pipefail
 # Disable globbing for safety (optional, but good for file handling)
 set -f
 
+# Feature switches
+enable_pandoc=
+
 # Detect input source
 is_a_tty=
 
 if [ -t 0 ]; then
     is_a_tty=1
+
+    which pandoc > /dev/null 2>&1 && enable_pandoc=1
 fi
 
 BA_AGENT_CONTEXT=$(mktemp)
@@ -74,8 +79,9 @@ call_llm_updatecontext_and_print() {
     swap_context
 
     if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
-        if [[ "$is_a_tty" == "1" ]]; then
-            log ""
+        log ""
+
+        if [[ "$is_a_tty" == "1" && "$enable_pandoc" == "1" ]]; then
             echo $answer | jq -r '.content' | pandoc -i - -w ansi -o -
         else
             echo $answer | jq -r '.content'
