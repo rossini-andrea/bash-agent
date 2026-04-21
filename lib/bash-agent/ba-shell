@@ -35,7 +35,6 @@ fi
 
 BA_AGENT_CONTEXT=$(mktemp)
 BA_AGENT_TEMP_CONTEXT=$(mktemp)
-BA_PATH=~/devel/bash-agent
 
 response=
 answer=
@@ -116,8 +115,8 @@ main() {
     }' --args -- "$(cat "$BA_PATH"/SYSTEM.md)" > $BA_AGENT_CONTEXT
 
     # Attach tool definitions to the context.
-    for t in $(ls $BA_PATH/tools); do
-        jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs -- "$($BA_PATH/tools/$t -h)" > $BA_AGENT_TEMP_CONTEXT && swap_context || log Ignoring tool: "$t"
+    for t in $(ls "$BA_TOOLS_PATH"); do
+        jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs -- "$("$BA_TOOLS_PATH"/$t -h)" > $BA_AGENT_TEMP_CONTEXT && swap_context || log Ignoring tool: "$t"
     done
 
     # Attach agent instructions to the context
@@ -165,12 +164,12 @@ main() {
 
                 if [[ $is_a_tty == "1" ]]; then
                     log ""
-                    $BA_PATH/tools/$name -i "$arguments"
+                    "$BA_TOOLS_PATH"/$name -i "$arguments"
                 fi
 
                 set +e
                 result="$( \
-                    $BA_PATH/tools/$name "$arguments" 2>&1
+                    "$BA_TOOLS_PATH"/$name "$arguments" 2>&1
                 )"
                 exit_status=$?
                 set -e

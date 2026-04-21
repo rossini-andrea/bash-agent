@@ -74,17 +74,17 @@ Tools receive arguments as JSON strings and must output results to stdout. Error
 
 ## Configuration
 
-- `BA_PATH`: Base path for agent installation (default: `~/devel/bash-agent`)
+- `BA_PATH`: Base path for agent installation (default: `./lib/bash-agent`)
 - Tools directory: `$BA_PATH/tools/`
 
 ## Usage
 
 ```bash
 # Interactive mode
-./ba-shell
+./bash-agent
 
 # Non-interactive mode (piped input)
-echo "Your question" | ./ba-shell
+echo "Your question" | ./bash-agent
 ```
 
 ## Key Functions

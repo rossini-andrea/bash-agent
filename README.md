@@ -23,7 +23,6 @@ this agent are:
 * bash
 * jq
 * curl
-* patch
 * pandoc - that's an heavy one, remove the pandoc pipe if you wish.
 
 ## But I don't like bash
@@ -48,10 +47,10 @@ API). Or customize ba-curl to connect where you want.
 
 ```bash
 # Interactive mode - just start chatting!
-./ba-shell
+./bash-agent
 
 # Or pipe a question to it
-echo "Which are 5 key events in the lore of Star Wars?" | ./ba-shell
+echo "Which are 5 key events in the lore of Star Wars?" | ./bash-agent
 ```
 
 ## How it works
@@ -63,25 +62,37 @@ echo "Which are 5 key events in the lore of Star Wars?" | ./ba-shell
 
 ## Adding Your Own Tools
 
-Want to extend what the agent can do? Just create a bash script in the `tools/` directory:
+Want to extend what the agent can do? Just create a bash script in the `lib/bash-agent/tools/` directory:
 
 ```bash
 # Copy the template
-cp tool-template.sh tools/my-tool
+cp tool-template.sh lib/bash-agent/tools/my-tool
 
 # Make it executable
-chmod +x tools/my-tool
+chmod +x lib/bash-agent/tools/my-tool
 
 # Add your logic and you're done!
 ```
 
 Check `tool-template.sh` for guidance.
 
+## Installing
+
+The Makefile supports installing in different locations. Just run:
+
+```bash
+# Install locally, change destination as needed.
+PREFIX=~/.local make install
+
+# Install systemwide
+sudo env PREFIX=/usr/local make install
+```
+
+You may require to add `$PREFIX/bin` to your `$PATH`.
+
 ## Configuration
 
-By default, the agent looks for tools in `~/devel/bash-agent/tools/`. "It works
-on my machine"®, but that is just a temporary annoyance; this project is in
-work in progress state. 
+By default, the agent looks for tools in `./lib/bash-agent/tools`.
 
 ## That's it!
 
