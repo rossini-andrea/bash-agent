@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+
+# This file is part of bash-agent.
+# Copyright (C) 2026 Andrea Rossini
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.org/licenses/>.
+
+set -e
+set -u
+set -o pipefail
+
+# show_help returns an OpenAI function definition, the engine will attach it to
+# the chat context.
+show_help() {
+    echo '{
+        "type": "function",
+        "function": {
+            "name": "find",
+            "description": "Search for a file or directory given an incomplete or unclear name. ALWAYS try to read/write a file before using this function.",
+            "parameters": {
+                "type": "object",
+                "required": ["file"],
+                "properties": {
+                    "file": {"type": "string", "description": "The file or directory to search for."}
+                }
+            }
+        }
+}'
+
+exit 0
+}
+
+# Mandatory infomode flag.
+infomode=
+
+# Parse options
+# Add parameters as required. Colon defines the parameter has a value
+while getopts hi opt
+do
+    case $opt in
+        h) show_help;;
+        i) infomode=1;;
+        ?) exit 2;;
+    esac
+done
+
+shift $((OPTIND - 1))
+
+# Example parameter extraction, customize as needed
+file=$(echo "$@" | jq -r '.file')
+
+# Infomode allows the tool to customize its tool calling log message.
+# Mandatory exit 0 for allowing the engine to ask the user for permission.
+if [[ "$infomode" == "1" ]]; then
+    echo "Searching for $file ..." >&2
+    exit 0
+fi
+
+#=============================
+# Your actual code goes here.
+#=============================
+
+# Helper: Format output, marking directories with trailing /
+format_result() {
+    local path="$1"
+    if [[ -d "$path" ]]; then
+        echo "${path}/"
+    else
+        echo "$path"
+    fi
+}
+
+# Step 1: Exact match (file or directory)
+if [[ -e "$file" ]]; then
+    format_result "$file"
+    exit 0
+fi
+
+# Step 2: Basename match - find exact filename in subdirectories
+basename_file=$(basename "$file")
+
+# Search for files with exact basename
+while IFS= read -r match; do
+    [[ -n "$match" ]] && format_result "$match" && exit 0
+done < <(find . -name "$basename_file" -type f 2>/dev/null)
+
+# Search for directories with exact basename
+while IFS= read -r match; do
+    [[ -n "$match" ]] && format_result "$match" && exit 0
+done < <(find . -name "$basename_file" -type d 2>/dev/null)
+
+# Step 3: Partial match - filename contains the search string
+while IFS= read -r match; do
+    [[ -n "$match" ]] && format_result "$match" && exit 0
+done < <(find . -name "*${basename_file}*" -type f 2>/dev/null | head -1)
+
+while IFS= read -r match; do
+    [[ -n "$match" ]] && format_result "$match" && exit 0
+done < <(find . -name "*${basename_file}*" -type d 2>/dev/null | head -1)
+
+# Step 4: Case-insensitive partial match
+while IFS= read -r match; do
+    [[ -n "$match" ]] && format_result "$match" && exit 0
+done < <(find . -iname "*${basename_file}*" -type f 2>/dev/null | head -1)
+
+while IFS= read -r match; do
+    [[ -n "$match" ]] && format_result "$match" && exit 0
+done < <(find . -iname "*${basename_file}*" -type d 2>/dev/null | head -1)
+
+# Step 5: Fuzzy match - try common typo variations
+len=${#basename_file}
+    if (( len > 2 )); then
+        # Try removing each character one at a time
+        for ((i=0; i<len; i++)); do
+            fuzzy="${basename_file:0:i}${basename_file:i+1}"
+            while IFS= read -r match; do
+                [[ -n "$match" ]] && format_result "$match" && exit 0
+            done < <(find . -name "*${fuzzy}*" -type f 2>/dev/null | head -1)
+            while IFS= read -r match; do
+                [[ -n "$match" ]] && format_result "$match" && exit 0
+            done < <(find . -name "*${fuzzy}*" -type d 2>/dev/null | head -1)
+        done
+
+ # Try swapping adjacent characters
+ for ((i=0; i<len-1; i++)); do
+     fuzzy="${basename_file:0:i}${basename_file:i+1:1}${basename_file:i:1}${basename_file:i+2}"
+     while IFS= read -r match; do
+         [[ -n "$match" ]] && format_result "$match" && exit 0
+     done < <(find . -name "*${fuzzy}*" -type f 2>/dev/null | head -1)
+     while IFS= read -r match; do
+         [[ -n "$match" ]] && format_result "$match" && exit 0
+     done < <(find . -name "*${fuzzy}*" -type d 2>/dev/null | head -1)
+ done
+    fi
+
+# Step 6: Not found
+echo "Error: Could not find file or directory matching '$file'" >&2
+exit 1
