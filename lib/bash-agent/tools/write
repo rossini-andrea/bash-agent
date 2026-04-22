@@ -65,9 +65,12 @@ content=$(echo "$@" | jq -r '.content')
 # Infomode allows the tool to customize its tool calling log message.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
-    echo WRITE $file >&2
-    echo "$content" | head -n 10 >&2
-    echo "..." >&2
+    echo "**WRITE** \`$file\`"
+    echo ""
+    echo "\`\`\`"
+    echo "$content" | head -n 10
+    echo "..."
+    echo "\`\`\`"
 
     exit 0
 fi

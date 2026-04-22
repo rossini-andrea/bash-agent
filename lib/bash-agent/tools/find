@@ -63,7 +63,9 @@ file=$(echo "$@" | jq -r '.file')
 # Infomode allows the tool to customize its tool calling log message.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
-    echo "Searching for $file ..." >&2
+    echo "**FIND**"
+    echo ""
+    echo "Searching for \`$file\` ..."
     exit 0
 fi
 

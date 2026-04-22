@@ -68,6 +68,19 @@ swap_context() {
     BA_AGENT_TEMP_CONTEXT=$c
 }
 
+# --- Markdown cat ---
+# Passes stdin through pandoc to pretty print markdown
+mdcat() {
+    if [[ "$enable_pandoc" == "1" ]]; then
+        pandoc -i - -w ansi -o -
+    else
+        cat
+    fi
+}
+
+# --- Calls llm, updates the context and prints the answer ---
+# Since the piped prompt is processed outside the agent loop, this factors code
+# that would otherwise be repeated.
 call_llm_updatecontext_and_print() {
     response=$(cat $BA_AGENT_CONTEXT | $BA_PATH/ba-curl)
 
@@ -80,12 +93,7 @@ call_llm_updatecontext_and_print() {
 
     if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
         log ""
-
-        if [[ "$is_a_tty" == "1" && "$enable_pandoc" == "1" ]]; then
-            echo $answer | jq -r '.content' | pandoc -i - -w ansi -o -
-        else
-            echo $answer | jq -r '.content'
-        fi
+        echo $answer | jq -r '.content' | mdcat
     fi
 }
 
@@ -170,7 +178,7 @@ main() {
 
                 if [[ $is_a_tty == "1" ]]; then
                     log ""
-                    "$BA_TOOLS_PATH"/$name -i "$arguments"
+                    "$BA_TOOLS_PATH"/$name -i "$arguments" | mdcat
                 fi
 
                 set +e

@@ -46,8 +46,7 @@ echo '{
 infomode=
 
 # Parse options
-# Add parameters as required. Colon defines the parameter has a value
-while getopts a:hi opt
+while getopts hi opt
 do
     case $opt in
     h)  show_help;;
@@ -63,10 +62,12 @@ param1=$(echo "$@" | jq -r '.param1')
 param2=$(echo "$@" | jq -r '.param2')
 
 # Infomode allows the tool to customize its tool calling log message.
+# It is possible to emit markdown as it will be processed by pandoc,
+# but avoid going too fancy for users not using it.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
-    echo tool-name $param1 >&2
-    echo $param2 but formatted in some weird way >&2
+    echo tool-name $param1
+    echo $param2 but formatted in some weird way
     exit 0
 fi
 

@@ -63,7 +63,7 @@ path=$(echo "$@" | jq -r '.file')
 # Infomode allows the tool to customize its tool calling log message.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
-    echo READ $path >&2
+    echo "**READ** \`$path\`"
     exit 0
 fi
 

@@ -63,7 +63,11 @@ command=$(echo "$@" | jq -r '.command')
 # Infomode allows the tool to customize its tool calling log message.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
-    echo EXECUTE "$command" >&2
+    echo "**EXECUTE**"
+    echo ""
+    echo "\`\`\`bash"
+    echo "$command"
+    echo "\`\`\`"
     exit 0
 fi
 

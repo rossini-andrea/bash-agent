@@ -85,7 +85,7 @@ edits=$(echo "$@" | jq -c '.edits')
 # Infomode allows the tool to customize its tool calling log message.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
-    echo EDIT $file >&2
+    echo **EDIT** \`"$file"\`
     exit 0
 fi
 
