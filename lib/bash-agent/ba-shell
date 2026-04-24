@@ -38,8 +38,10 @@ if [ -t 0 ]; then
     which pandoc > /dev/null 2>&1 && enable_pandoc=1
 fi
 
-BA_AGENT_CONTEXT=$(mktemp)
-BA_AGENT_TEMP_CONTEXT=$(mktemp)
+BA_AGENT_CONTEXT=$(mktemp --suffix=.json)
+BA_AGENT_TEMP_CONTEXT=$(mktemp --suffix=.json)
+BA_AGENT_TOOL_STDOUT=$(mktemp --suffix=.txt)
+BA_AGENT_TOOL_STDERR=$(mktemp --suffix=.txt)
 
 response=
 answer=
@@ -57,6 +59,8 @@ log() {
 cleanup() {
     rm $BA_AGENT_CONTEXT
     rm $BA_AGENT_TEMP_CONTEXT
+    rm $BA_AGENT_TOOL_STDOUT
+    rm $BA_AGENT_TOOL_STDERR
 }
 trap cleanup EXIT
 
@@ -182,30 +186,28 @@ main() {
                 fi
 
                 set +e
-                result="$( \
-                    "$BA_TOOLS_PATH"/$name "$arguments" 2>&1
-                )"
+                "$BA_TOOLS_PATH"/$name "$arguments" \
+                    > "$BA_AGENT_TOOL_STDOUT" \
+                    2> "$BA_AGENT_TOOL_STDERR"
+
                 exit_status=$?
                 set -e
 
-                if [ $exit_status -ne 0 ]; then
-                    jq '.messages += [{
-                        role: "tool",
-                        tool_call_id: $ARGS.positional[0],
-                        content: $ARGS.positional[1],
-                        additional_info: {
-                            failure_reason: $ARGS.positional[2],
-                        }
+                jq \
+                    --rawfile so "$BA_AGENT_TOOL_STDOUT" \
+                    --rawfile se "$BA_AGENT_TOOL_STDERR" \
+                '.messages += [{
+                    role: "tool",
+                    tool_call_id: $ARGS.positional[0],
+                    content: ({
+                        output: $so,
+                        error: $se,
+                        exit_status: $ARGS.positional[1]
+                    } | tostring)
                 }]' \
                     $BA_AGENT_CONTEXT \
-                    --args -- "$tool_call_id" "$result" "Exit status: $exit_status" \
+                    --args -- "$tool_call_id" "$exit_status" \
                     > $BA_AGENT_TEMP_CONTEXT
-            else
-                jq '.messages += [{role: "tool", tool_call_id: $ARGS.positional[0], content: $ARGS.positional[1] }]' \
-                    $BA_AGENT_CONTEXT \
-                    --args -- "$tool_call_id" "$result" \
-                    > $BA_AGENT_TEMP_CONTEXT
-                fi
 
                 swap_context
             done < <(echo $answer | jq -r '.tool_calls[] | "\(.function.name) \(.id) \(.function.arguments)"')
