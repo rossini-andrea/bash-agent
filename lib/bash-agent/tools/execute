@@ -32,7 +32,9 @@ echo '{
           "type": "object",
           "required": ["command"],
           "properties": {
-            "command": {"type": "string", "description": "The command or series of commands to run inside bash."}
+            "command": {"type": "string", "description": "The command or series of commands to run inside bash."},
+            "cwd": {"type": "string", "description": "The working directory for the requested command, an empty or missing value will cause the command to run in the main current directory."},
+            "timeout": {"type": "string", "description": "A timeout, in seconds, for the requested command. If the command does not end in the given time, it will fail."}
           }
         }
       }
@@ -45,7 +47,6 @@ echo '{
 infomode=
 
 # Parse options
-# Add parameters as required. Colon defines the parameter has a value
 while getopts hi opt
 do
     case $opt in
@@ -57,8 +58,10 @@ done
 
 shift $((OPTIND - 1))
 
-# Example parameter extraction, customize as needed
+# Parameter extraction
 command=$(echo "$@" | jq -r '.command')
+cwd=$(echo "$@" | jq -r '""+.cwd')
+timeout=$(echo "$@" | jq -r '""+.timeout')
 
 # Infomode allows the tool to customize its tool calling log message.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
@@ -74,5 +77,14 @@ fi
 #=============================
 # Your actual code goes here.
 #=============================
-bash -c -- "$command"
+
+if [[ "$cwd" != "" ]]; then
+   cd "$cwd"
+fi
+
+if [[ "$timeout" != "" ]]; then
+    timeout -k3 "$timeout"s bash -c -- "$command"
+else
+    bash -c -- "$command"
+fi
 

@@ -8,9 +8,17 @@ This project implements a Bash-based AI agent framework that allows an LLM to in
 
 ### Main Components
 
-1. **ba-shell** - Main entry point that orchestrates the agent loop
-2. **ba-curl** - Wrapper for making HTTP requests to the LLM server
-3. **tool-template.sh** - Template for creating new tools
+* Makefile - Used for deployment
+* README.md
+* bash-agent - Jumpstart script that sets up env vars
+* lib/bash-agent/ba-curl - Wrapper for making HTTP requests to the LLM server
+* lib/bash-agent/ba-shell - Main entry point that orchestrates the agent loop
+* lib/bash-agent/tools/edit - Precise file edits
+* lib/bash-agent/tools/execute - Tool to run bash commands
+* lib/bash-agent/tools/find - File search tool
+* lib/bash-agent/tools/read - Consents the LLM to read file content
+* lib/bash-agent/tools/write - Write a new file
+* tool-template.sh - Template for creating new tools
 
 ### How It Works
 
