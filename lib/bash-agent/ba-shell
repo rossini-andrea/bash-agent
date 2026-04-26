@@ -121,7 +121,31 @@ attach_instructions() {
         true
 }
 
+# --- Ask approval ---
+# Asks the user to approve a command, optionally providing
+# steering feedback.
+ask_approval() {
+    local -n retval=$1
+
+    read -r -e -p "Approve? Type Y, N or a message> " approval
+
+    if [[ "$approval" == "Y" || "$approval" == "y" ]]; then
+        return 0
+    elif [[ "$approval" == "N" || "$approval" == "n" ]]; then
+        retval="User rejected the tool call."
+        return 1
+    fi
+
+    retval="User rejected with feedback: ""$approval"
+    return 2
+}
+
 # --- Main Script Logic ---
+# Performs initialization, creates an initial context with:
+# * System prompt
+# * Available tools
+#
+# Then the script enters the agent loop.
 main() {
     # Attach system prompt to the context
     echo '{}' | jq '.={
@@ -155,9 +179,10 @@ main() {
     # --- MAIN SHELL LOOP ---
     while true
     do
-        tool_calls=$(echo $answer | jq '.tool_calls | length')
+        tool_calls=$(echo $answer | jq '.tool_calls')
+        tool_calls_len=$(echo $tool_calls | jq '. | length')
 
-        if [[ "$tool_calls" == "0" && $is_a_tty == "1" ]]; then
+        if [[ "$tool_calls_len" == "0" && $is_a_tty == "1" ]]; then
             # Read user prompt if there is no tool call
             # and it's running interactively
             log ""
@@ -168,30 +193,54 @@ main() {
                 $BA_AGENT_CONTEXT \
                 --args  -- "$prompt" > $BA_AGENT_TEMP_CONTEXT
             swap_context
-        elif [[ "$tool_calls" == "0" ]]; then
+        elif [[ "$tool_calls_len" == "0" ]]; then
             # Exit the non interactive execution
             exit 0
         else
             # Call all tools requested by the LLM
-            while IFS= read -r line; do
-                set -- $line
-                name="$1"
-                tool_call_id="$2"
-                shift 2
-                arguments="$@"
+            while [[ "$tool_calls_len" != "0" ]]; do
+                # Extract data from the first item
+                name=$(echo $tool_calls | jq -r '""+.[0].function.name')
+                tool_call_id=$(echo $tool_calls | jq -r '""+.[0].id')
+                arguments=$(echo $tool_calls | jq -r '""+.[0].function.arguments')
+
+                # Drop the first item
+                tool_calls=$(echo $tool_calls | jq '.[1:]')
+                tool_calls_len=$(echo $tool_calls | jq '. | length')
+
+                exit_status=
 
                 if [[ $is_a_tty == "1" ]]; then
                     log ""
                     "$BA_TOOLS_PATH"/$name -i "$arguments" | mdcat
+
+                    set +e
+                    feedback=
+                    ask_approval feedback
+                    exit_status=$?
+                    set -e
+
+                    if [[ "$exit_status" == "0" ]]; then
+                        set +e
+                        "$BA_TOOLS_PATH"/$name "$arguments" \
+                            > "$BA_AGENT_TOOL_STDOUT" \
+                            2> "$BA_AGENT_TOOL_STDERR"
+
+                        exit_status=$?
+                        set -e
+                    else
+                        echo "" > "$BA_AGENT_TOOL_STDOUT"
+                        echo "$feedback" > "$BA_AGENT_TOOL_STDERR"
+                    fi
+                else
+                    set +e
+                    "$BA_TOOLS_PATH"/$name "$arguments" \
+                        > "$BA_AGENT_TOOL_STDOUT" \
+                        2> "$BA_AGENT_TOOL_STDERR"
+
+                    exit_status=$?
+                    set -e
                 fi
-
-                set +e
-                "$BA_TOOLS_PATH"/$name "$arguments" \
-                    > "$BA_AGENT_TOOL_STDOUT" \
-                    2> "$BA_AGENT_TOOL_STDERR"
-
-                exit_status=$?
-                set -e
 
                 jq \
                     --rawfile so "$BA_AGENT_TOOL_STDOUT" \
@@ -210,7 +259,7 @@ main() {
                     > $BA_AGENT_TEMP_CONTEXT
 
                 swap_context
-            done < <(echo $answer | jq -r '.tool_calls[] | "\(.function.name) \(.id) \(.function.arguments)"')
+            done
         fi
 
         # Call the LLM with the new context
@@ -220,3 +269,4 @@ main() {
 
 # Run main function
 main "$@"
+
