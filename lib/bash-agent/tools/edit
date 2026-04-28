@@ -27,7 +27,7 @@ show_help() {
         "type": "function",
         "function": {
             "name": "edit",
-            "description": "Applies changes to a file. Use this tool for making precise edits to existing files without rewriting the entire file.",
+            "description": "Applies precise, targeted edits to an existing file. Use this for small, localized changes (e.g., fixing a line, adding a function, modifying a few lines). Use \"write\" for complete file rewrites or when making many scattered changes.\n\nEach edit in the array is applied independently to the original file state. Specify all line numbers as if no other edits have been applied. For multiple edits at nearby locations, consider using a single edit with a larger \"linecount\".\n\nExample: To replace line 5 with new text: { \"file\": \"src/main.py\", \"edits\": [{ \"operation\": \"replace\", \"from\": 5, \"linecount\": 1, \"content\": \"def new_function(): pass\" }] }",
             "parameters": {
                 "type": "object",
                 "required": ["file", "edits"],
@@ -42,17 +42,20 @@ show_help() {
                                 "enum": ["insert", "replace", "delete"],
                                 "description": "Type of edit: \"insert\" adds content before \"from\" line, \"replace\" replaces \"linecount\" lines starting at \"from\", \"delete\" removes \"linecount\" lines starting at \"from\""
                             },
-                        "from": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "description": "Line number (1-indexed) where the edit starts"
-                        },
-                    "linecount": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "description": "Number of lines to replace/delete. For \"insert\" operation, this should be 0"
-                    },
-                "content": {"type": "string", "description": "The text snippet to insert or replace to the original text."}
+                            "from": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "description": "Line number (1-indexed) where the edit starts"
+                            },
+                            "linecount": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "description": "Number of lines to replace/delete. For \"insert\" operation, this should be 0"
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "The text to insert (for \"insert\" operation) or to replace the matched lines (for \"replace\" operation). Omit or leave empty for \"delete\" operation."
+                            }
                         }
                     }
                 }

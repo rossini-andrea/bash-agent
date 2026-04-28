@@ -112,17 +112,18 @@ attach() {
 }
 
 # --- Attach instructions ---
-# Attaches current project agent instruction file to the chat context
+# Attaches current project agent instructions file to the chat context.
 # If no instructions file is found just succedes silently.
 attach_instructions() {
     attach ./AGENT.md || \
-        attach ./CLAUDE.md || \
-        attach ./.github/copilot-instructions.md || \
-        true
+    attach ./AGENTS.md || \
+    attach ./CLAUDE.md || \
+    attach ./.github/copilot-instructions.md || \
+    true
 }
 
 # --- Ask approval ---
-# Asks the user to approve a command, optionally providing
+# Asks the user to approve a tool call, optionally providing
 # steering feedback.
 ask_approval() {
     local -n retval=$1
