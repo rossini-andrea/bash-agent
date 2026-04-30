@@ -57,19 +57,19 @@ log() {
 # --- Cleanup / Signal Handling ---
 # Run this when the script exits (normal or error)
 cleanup() {
-    rm $BA_AGENT_CONTEXT
-    rm $BA_AGENT_TEMP_CONTEXT
-    rm $BA_AGENT_TOOL_STDOUT
-    rm $BA_AGENT_TOOL_STDERR
+    rm "$BA_AGENT_CONTEXT"
+    rm "$BA_AGENT_TEMP_CONTEXT"
+    rm "$BA_AGENT_TOOL_STDOUT"
+    rm "$BA_AGENT_TOOL_STDERR"
 }
 trap cleanup EXIT
 
 # --- Swap context ---
 # Swap the file usage for contex/temp context
 swap_context() {
-    c=$BA_AGENT_CONTEXT
-    BA_AGENT_CONTEXT=$BA_AGENT_TEMP_CONTEXT
-    BA_AGENT_TEMP_CONTEXT=$c
+    c="$BA_AGENT_CONTEXT"
+    BA_AGENT_CONTEXT="$BA_AGENT_TEMP_CONTEXT"
+    BA_AGENT_TEMP_CONTEXT="$c"
 }
 
 # --- Markdown cat ---
@@ -86,18 +86,18 @@ mdcat() {
 # Since the piped prompt is processed outside the agent loop, this factors code
 # that would otherwise be repeated.
 call_llm_updatecontext_and_print() {
-    response=$(cat $BA_AGENT_CONTEXT | $BA_PATH/ba-curl)
+    response=$(cat "$BA_AGENT_CONTEXT" | "$BA_PATH"/ba-curl)
 
-    answer=$(echo $response | jq '.choices[0].message | {role: .role, content: .content, tool_calls: .tool_calls}')
+    answer=$(echo "$response" | jq '.choices[0].message | {role: .role, content: .content, tool_calls: .tool_calls}')
 
     jq '.messages += [ $ARGS.positional[0] ]' \
         $BA_AGENT_CONTEXT \
-        --jsonargs -- "$answer" > $BA_AGENT_TEMP_CONTEXT
+        --jsonargs -- "$answer" > "$BA_AGENT_TEMP_CONTEXT"
     swap_context
 
-    if [[ $(echo $answer | jq -r '.content | length') != "0" ]]; then
+    if [[ $(echo "$answer" | jq -r '.content | length') != "0" ]]; then
         log ""
-        echo $answer | jq -r '.content' | mdcat
+        echo "$answer" | jq -r '.content' | mdcat
     fi
 }
 
@@ -106,8 +106,8 @@ call_llm_updatecontext_and_print() {
 attach() {
     ls "$1" &&
         jq '.messages += [{role: "user", content: "\n\n--- File: " + $ARGS.positional[0] + " ---\n" + $ARGS.positional[1] }]' \
-        $BA_AGENT_CONTEXT \
-        --args -- "$1" "$(cat "$1")" > $BA_AGENT_TEMP_CONTEXT &&
+        "$BA_AGENT_CONTEXT" \
+        --args -- "$1" "$(cat "$1")" > "$BA_AGENT_TEMP_CONTEXT" &&
         swap_context
 }
 
@@ -126,7 +126,7 @@ attach_instructions() {
 # Asks the user to approve a tool call, optionally providing
 # steering feedback.
 ask_approval() {
-    local -n retval=$1
+    local -n retval="$1"
 
     read -r -e -p "Approve? Type Y, N or a message> " approval
 
@@ -155,11 +155,11 @@ main() {
             role: "system",
             content: $ARGS.positional[0]
         }]
-    }' --args -- "$(cat "$BA_PATH"/SYSTEM.md)" > $BA_AGENT_CONTEXT
+    }' --args -- "$(cat "$BA_PATH"/SYSTEM.md)" > "$BA_AGENT_CONTEXT"
 
     # Attach tool definitions to the context.
     for t in $(ls "$BA_TOOLS_PATH"); do
-        jq '.tools += [$ARGS.positional[0]]' $BA_AGENT_CONTEXT --jsonargs -- "$("$BA_TOOLS_PATH"/$t -h)" > $BA_AGENT_TEMP_CONTEXT && swap_context || log Ignoring tool: "$t"
+        jq '.tools += [$ARGS.positional[0]]' "$BA_AGENT_CONTEXT" --jsonargs -- "$("$BA_TOOLS_PATH"/$t -h)" > "$BA_AGENT_TEMP_CONTEXT" && swap_context || log Ignoring tool: "$t"
     done
 
     # Attach agent instructions to the context
@@ -171,8 +171,8 @@ main() {
     # and do a call
     if [[ ! $is_a_tty == "1" ]]; then
         jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
-            $BA_AGENT_CONTEXT \
-            --args -- "$(cat)" > $BA_AGENT_TEMP_CONTEXT
+            "$BA_AGENT_CONTEXT" \
+            --args -- "$(cat)" > "$BA_AGENT_TEMP_CONTEXT"
         swap_context
         call_llm_updatecontext_and_print
     fi
@@ -180,8 +180,8 @@ main() {
     # --- MAIN SHELL LOOP ---
     while true
     do
-        tool_calls=$(echo $answer | jq '.tool_calls')
-        tool_calls_len=$(echo $tool_calls | jq '. | length')
+        tool_calls=$(echo "$answer" | jq '.tool_calls')
+        tool_calls_len=$(echo "$tool_calls" | jq '. | length')
 
         if [[ "$tool_calls_len" == "0" && $is_a_tty == "1" ]]; then
             # Read user prompt if there is no tool call
@@ -191,8 +191,8 @@ main() {
             read -r -e -p "> " prompt
 
             jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
-                $BA_AGENT_CONTEXT \
-                --args  -- "$prompt" > $BA_AGENT_TEMP_CONTEXT
+                "$BA_AGENT_CONTEXT" \
+                --args  -- "$prompt" > "$BA_AGENT_TEMP_CONTEXT"
             swap_context
         elif [[ "$tool_calls_len" == "0" ]]; then
             # Exit the non interactive execution
@@ -201,13 +201,13 @@ main() {
             # Call all tools requested by the LLM
             while [[ "$tool_calls_len" != "0" ]]; do
                 # Extract data from the first item
-                name=$(echo $tool_calls | jq -r '""+.[0].function.name')
-                tool_call_id=$(echo $tool_calls | jq -r '""+.[0].id')
-                arguments=$(echo $tool_calls | jq -r '""+.[0].function.arguments')
+                name=$(echo "$tool_calls" | jq -r '""+.[0].function.name')
+                tool_call_id=$(echo "$tool_calls" | jq -r '""+.[0].id')
+                arguments=$(echo "$tool_calls" | jq -r '""+.[0].function.arguments')
 
                 # Drop the first item
-                tool_calls=$(echo $tool_calls | jq '.[1:]')
-                tool_calls_len=$(echo $tool_calls | jq '. | length')
+                tool_calls=$(echo "$tool_calls" | jq '.[1:]')
+                tool_calls_len=$(echo "$tool_calls" | jq '. | length')
 
                 exit_status=
 
@@ -218,7 +218,7 @@ main() {
                     set +e
                     feedback=
                     ask_approval feedback
-                    exit_status=$?
+                    exit_status="$?"
                     set -e
 
                     if [[ "$exit_status" == "0" ]]; then
@@ -239,7 +239,7 @@ main() {
                         > "$BA_AGENT_TOOL_STDOUT" \
                         2> "$BA_AGENT_TOOL_STDERR"
 
-                    exit_status=$?
+                    exit_status="$?"
                     set -e
                 fi
 
@@ -255,9 +255,9 @@ main() {
                         exit_status: $ARGS.positional[1]
                     } | tostring)
                 }]' \
-                    $BA_AGENT_CONTEXT \
+                    "$BA_AGENT_CONTEXT" \
                     --args -- "$tool_call_id" "$exit_status" \
-                    > $BA_AGENT_TEMP_CONTEXT
+                    > "$BA_AGENT_TEMP_CONTEXT"
 
                 swap_context
             done
