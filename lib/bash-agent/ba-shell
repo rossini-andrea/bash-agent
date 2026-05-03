@@ -45,6 +45,8 @@ BA_AGENT_TOOL_STDERR=$(mktemp --suffix=.txt)
 
 response=
 answer=
+BA_LAST_MODEL=
+BA_LAST_SPEED=
 
 # --- LOGGING HELPER ---
 # Simply redirects all parameters to stderr
@@ -89,6 +91,10 @@ call_llm_updatecontext_and_print() {
     response=$(cat "$BA_AGENT_CONTEXT" | "$BA_PATH"/ba-curl)
 
     answer=$(echo "$response" | jq '.choices[0].message | {role: .role, content: .content, tool_calls: .tool_calls}')
+
+    # Extract model name and generation speed from response
+    BA_LAST_MODEL=$(echo "$response" | jq -r '.model // empty')
+    BA_LAST_SPEED=$(echo "$response" | jq -r '.timings.predicted_per_second // empty')
 
     jq '.messages += [ $ARGS.positional[0] ]' \
         $BA_AGENT_CONTEXT \
@@ -187,6 +193,9 @@ main() {
             # Read user prompt if there is no tool call
             # and it's running interactively
             log ""
+            if [[ -n "$BA_LAST_MODEL" ]]; then
+                log "$(printf -- "------ %s --- %.2f t/s ------" "$BA_LAST_MODEL" "$BA_LAST_SPEED")"
+            fi
             log "------ $PWD ------"
             read -r -e -p "> " prompt
 
@@ -225,7 +234,7 @@ main() {
                         set +e
                         "$BA_TOOLS_PATH"/$name "$arguments" \
                             > "$BA_AGENT_TOOL_STDOUT" \
-                            2> "$BA_AGENT_TOOL_STDERR"
+                            2>&1 | tee "$BA_AGENT_TOOL_STDERR"
 
                         exit_status=$?
                         set -e
@@ -270,4 +279,3 @@ main() {
 
 # Run main function
 main "$@"
-
