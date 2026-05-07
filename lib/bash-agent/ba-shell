@@ -47,6 +47,7 @@ response=
 answer=
 BA_LAST_MODEL=
 BA_LAST_SPEED=
+BA_LAST_PROMPT_SPEED=
 
 # --- LOGGING HELPER ---
 # Simply redirects all parameters to stderr
@@ -94,6 +95,7 @@ call_llm_updatecontext_and_print() {
 
     # Extract model name and generation speed from response
     BA_LAST_MODEL=$(echo "$response" | jq -r '.model // empty')
+    BA_LAST_PROMPT_SPEED=$(echo "$response" | jq -r '.timings.prompt_per_second // empty')
     BA_LAST_SPEED=$(echo "$response" | jq -r '.timings.predicted_per_second // empty')
 
     jq '.messages += [ $ARGS.positional[0] ]' \
@@ -194,7 +196,7 @@ main() {
             # and it's running interactively
             log ""
             if [[ -n "$BA_LAST_MODEL" ]]; then
-                log "$(printf -- "------ %s --- %.2f t/s ------" "$BA_LAST_MODEL" "$BA_LAST_SPEED")"
+                log "$(printf -- "------ %s - Prompt: %.2f - Generation: %.2f t/s" "$BA_LAST_MODEL" "$BA_LAST_PROMPT_SPEED" "$BA_LAST_SPEED")"
             fi
             log "------ $PWD ------"
             read -r -e -p "> " prompt
