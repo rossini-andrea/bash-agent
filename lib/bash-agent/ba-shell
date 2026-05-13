@@ -159,6 +159,7 @@ main() {
     # Attach system prompt to the context
     echo '{}' | jq '.={
         tools: [],
+        reasoning_format: "auto",
         messages: [{
             role: "system",
             content: $ARGS.positional[0]
@@ -196,7 +197,7 @@ main() {
             # and it's running interactively
             log ""
             if [[ -n "$BA_LAST_MODEL" ]]; then
-                log "$(printf -- "------ %s - Prompt: %.2f - Generation: %.2f t/s" "$BA_LAST_MODEL" "$BA_LAST_PROMPT_SPEED" "$BA_LAST_SPEED")"
+                log "$(printf -- "------ %s - Prompt: %.2f t/s - Generation: %.2f t/s" "$BA_LAST_MODEL" "$BA_LAST_PROMPT_SPEED" "$BA_LAST_SPEED")"
             fi
             log "------ $PWD ------"
             read -r -e -p "> " prompt

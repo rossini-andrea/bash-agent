@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+
+# This file is part of bash-agent.
+# Copyright (C) 2026 Andrea Rossini
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# show_help returns an OpenAI function definition, the engine will attach it to
+# the chat context.
+show_help() {
+echo '{
+      "type": "function",
+      "function": {
+        "name": "grep",
+        "description": "Search for patterns in files and return matching lines with line numbers.",
+        "parameters": {
+          "type": "object",
+          "required": ["pattern", "file"],
+          "properties": {
+              "pattern": { "type": "string", "description": "Search pattern" },
+              "file": { "type": "string", "description": "File to search" }
+          }
+        }
+      }
+    }'
+
+ exit 0
+}
+
+# Mandatory infomode flag.
+infomode=
+
+# Parse options
+while getopts hi opt
+do
+    case $opt in
+    h)  show_help;;
+    i)  infomode=1;;
+    ?)  exit 2;;
+    esac
+done
+
+shift $((OPTIND - 1))
+
+# Parameter extraction
+pattern=$(echo "$@" | jq -r '.pattern')
+file=$(echo "$@" | jq -r '.file')
+
+# Infomode allows the tool to customize its tool calling log message.
+# It is possible to emit markdown as it will be processed by pandoc,
+# but avoid going too fancy for users not using it.
+# Mandatory exit 0 for allowing the engine to ask the user for permission.
+if [[ "$infomode" == "1" ]]; then
+    echo **GREP** \`"$file"\`
+    echo Searching for \`"$pattern"\`
+    exit 0
+fi
+
+#=============================
+# Your actual code goes here.
+#=============================
+
+# Validate parameters
+if [[ -z "$pattern" || "$pattern" == "null" ]]; then
+    echo 'Error: pattern parameter is required' >&2
+    exit 1
+fi
+
+if [[ -z "$file" || "$file" == "null" ]]; then
+    echo 'Error: file parameter is required' >&2
+    exit 1
+fi
+
+if [[ ! -f "$file" ]]; then
+    echo "Error: File '$file' does not exist" >&2
+    exit 1
+fi
+
+# Run grep and capture output (grep returns 1 when no matches, so we suppress the error)
+matches=$(grep -n "$pattern" "$file" 2>/dev/null || true)
+
+# Count matches
+if [[ -z "$matches" ]]; then
+    match_count=0
+else
+    match_count=$(echo "$matches" | wc -l)
+fi
+
+# Format output with metadata header
+echo "File: $file"
+echo "Pattern: $pattern"
+echo "Matches: $match_count"
+echo "---"
+
+# Truncate if too many matches to avoid overwhelming the LLM
+MAX_OUTPUT=100
+if [[ $match_count -gt $MAX_OUTPUT ]]; then
+    echo "$matches" | head -n "$MAX_OUTPUT"
+    echo "... (truncated, $((match_count - MAX_OUTPUT)) more matches)"
+else
+    echo "$matches"
+fi
+
+# Use exit 0 even when grep finds nothing (grep returns 1 on no match)
+exit 0
