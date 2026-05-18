@@ -31,72 +31,13 @@ changes.
 
 Each edit in the array is applied independently to the original file state.
 Specify all line numbers as if no other edits have been applied. For multiple
-edits at nearby locations, consider using a single edit with a larger
-"linecount".
-
-## Quick reference
-
-This is a reference for the edit operations and their effect on a file.
-The text snippets use the parameter names explained later, and show
-how the snippets are affected.
-
-### Insert
-
-Before insert:
-
-```
-context_start
-target
-```
-
-After insert:
-
-```
-context_start
-content
-target
-```
-
-### Replace
-
-Before replace:
-
-```
-context_start
-target
-context_end
-```
-
-After replace:
-
-```
-context_start
-content
-context_end
-```
-
-### Delete
-
-Before delete:
-
-```
-context_start
-target
-context_end
-```
-
-Before delete:
-
-```
-context_start
-context_end
-```
+edits at nearby locations, consider using a single edit with a larger range.
 
 ## Examples
 
-* To delete a range of lines: {"file": "src/main.c", "edits": [{ "operation": "delete", "from": 104, "linecount": 2, "context_start": "int foo() {", "target": "    // TODO: check this initialization is needed\n    total=-1;", "context_end": "    while (total < cap) {" }]}"
-* To replace line 2 with new text: {"file": "src/main.c", "edits": [{ "operation": "replace", "from": 2, "linecount": 1, "context_start": "#include <stdio.h>", "target": "void main() {", "content": "int main(int argc, char **argv) {", "context_end": "    // Variable declarations" }] }"
-* To insert text at line 5: {"file": "README.md", "edits": [{ "operation": "insert", "from": 5, "linecount": 1, "context_start": "This will remain line 4.", "target": "This was line 5, now 7.", "content": "Inserted line at 5.\nInserted line at 6.", "context_end": "" }]}
+* To delete a range of lines: {"file": "src/main.c", "edits": [{ "operation": "delete", "from": 104, "to": 105 }]}"
+* To replace line 2 with new text: {"file": "src/main.c", "edits": [{ "operation": "replace", "from": 2, "to": 2, "content": "int main(int argc, char **argv) {" }] }"
+* To insert text at line 5: {"file": "README.md", "edits": [{ "operation": "insert", "from": 5, "content": "Inserted line at 5.\nInserted line at 6." }]}
 '
     echo '{
         "type": "function",
@@ -113,38 +54,26 @@ context_end
                         "description": "A list of edits to perform on the file.",
                         "items": {
                             "type": "object",
-                            "required": ["operation", "from", "linecount", "target", "content", "context_start", "context_end"],
+                            "required": ["operation", "from", "to"],
                             "properties": {
                                 "operation": {
                                     "type": "string",
                                     "enum": ["insert", "replace", "delete"],
-                                    "description": "Type of edit:\n* \"insert\" inserts \"content\" so it appears after the \"context_start\" line and before the \"target\" line.\n* \"replace\" replaces \"linecount\" lines starting at \"from\".\n* \"delete\" removes \"linecount\" lines starting at \"from\"."
+                                    "description": "Type of edit:\n* \"insert\" inserts \"content\" so it appears at the \"from\" line. Any existing text at \"from\" **is preserved** and moved after content.\n* \"replace\" replaces \"linecount\" lines starting at \"from\".\n* \"delete\" removes \"linecount\" lines starting at \"from\"."
                                 },
                                 "from": {
                                     "type": "integer",
                                     "minimum": 1,
-                                    "description": "Line number (1-indexed) where \"target\" begins."
+                                    "description": "Line number (1-indexed) where target range (inclusive) begins."
                                 },
-                                "linecount": {
+                                "to": {
                                     "type": "integer",
                                     "minimum": 1,
-                                    "description": "Number of target lines. For \"insert\" operation, this should be 1."
-                                },
-                                "context_start": {
-                                    "type": "string",
-                                    "description": "A copy of the text present in the original file in the **single line before** \"target\". Leave empty if \"from\" is 1."
-                                },
-                                "target": {
-                                    "type": "string",
-                                    "description": "A copy of the text in the original file present at the lines in the range specified by \"from\" and \"linecount\"."
+                                    "description": "Line number (1-indexed) where target range (inclusive) ends. This parameter is ignored for \"insert\" operation."
                                 },
                                 "content": {
                                     "type": "string",
-                                    "description": "The text to insert (for \"insert\" operation) or to replace the target lines (for \"replace\" operation). Omit or leave empty for \"delete\" operation."
-                                },
-                                "context_end": {
-                                    "type": "string",
-                                    "description": "A copy of the text present in the original file in the **single line after** the \"target\" text. Leave empty if edit is at end of file. This parameter **is completely unused for \"insert\"**."
+                                    "description": "The text to insert (for \"insert\" operation) or to replace the range lines (for \"replace\" operation). Omit or leave empty for \"delete\" operation."
                                 }
                             }
                         }
@@ -209,7 +138,7 @@ fi
 # Extract all edits into arrays for processing
 declare -a edit_operations
 declare -a edit_from
-declare -a edit_linecount
+declare -a edit_to
 declare -a edit_target
 declare -a edit_content
 declare -a edit_ctx_start
@@ -218,25 +147,31 @@ declare -a edit_ctx_end
 for ((i=0; i<edits_count; i++)); do
     op="$(echo "$edits" | jq -r ".[$i].operation")"
     from="$(echo "$edits" | jq -r ".[$i].from")"
-    lc="$(echo "$edits" | jq -r ".[$i].linecount")"
-    target="$(echo "$edits" | jq -r ".[$i].target")"
+    to="$(echo "$edits" | jq -r ".[$i].to")"
+    #target="$(echo "$edits" | jq -r ".[$i].target")"
     content="$(echo "$edits" | jq -r ".[$i].content")"
-    ctx_start="$(echo "$edits" | jq -r ".[$i].context_start")"
-    ctx_end="$(echo "$edits" | jq -r ".[$i].context_end")"
+    #ctx_start="$(echo "$edits" | jq -r ".[$i].context_start")"
+    #ctx_end="$(echo "$edits" | jq -r ".[$i].context_end")"
 
     edit_operations+=("$op")
     edit_from+=("$from")
-    edit_linecount+=("$lc")
-    edit_target+=("$target")
+
+    if [[ "$op" == "insert" ]]; then
+        edit_to+=("$from")
+    else
+        edit_to+=("$to")
+    fi
+    #edit_target+=("$target")
     edit_content+=("$content")
-    edit_ctx_start+=("$ctx_start")
-    edit_ctx_end+=("$ctx_end")
+    #edit_ctx_start+=("$ctx_start")
+    #edit_ctx_end+=("$ctx_end")
 done
 
 # Validate that all 'from' parameters are sequential (sorted in ascending order)
 prev_from=0
 for ((i=0; i<edits_count; i++)); do
     current_from=${edit_from[$i]}
+    current_to=${edit_to[$i]}
 
     # Validate from is a positive integer
     if ! [[ "$current_from" =~ ^[0-9]+$ ]] || [[ "$current_from" -lt 1 ]]; then
@@ -244,13 +179,25 @@ for ((i=0; i<edits_count; i++)); do
         exit 1
     fi
 
-    # Check sequential order (must be strictly increasing)
-    if [[ "$current_from" -le "$prev_from" ]]; then
-        echo "Error: 'from' parameters must be sequential (ascending order). Found $current_from <= $prev_from at edit index $i" >&2
+    # Validate to is a positive integer
+    if ! [[ "$current_to" =~ ^[0-9]+$ ]] || [[ "$current_to" -lt 1 ]]; then
+        echo "Error: 'to' parameter must be a positive integer (got: $current_to)" >&2
         exit 1
     fi
 
-    prev_from=$current_from
+    # Check range is valid
+    if [[ "$current_from" -gt "$current_to" ]]; then
+        echo "Error: 'from' parameter must be less or equal its corresponding 'to'. Found $current_from > $current_to at edit index $i" >&2
+        exit 1
+    fi
+
+    # Check sequential order (must be strictly increasing)
+    if [[ "$current_from" -le "$prev_from" ]]; then
+        echo "Error: 'from' parameters must be sequential (ascending order) and after the previous 'to'. Found $current_from <= $prev_from at edit index $i" >&2
+        exit 1
+    fi
+
+    prev_from=$current_to
 done
 
 temp_copy="$(mktemp)"
@@ -264,47 +211,47 @@ line_counter=1
 for ((i=0; i<edits_count; i++)); do
     op=${edit_operations[$i]}
     from=${edit_from[$i]}
-    lc=${edit_linecount[$i]}
-    target=${edit_target[$i]}
+    to=${edit_to[$i]}
+    #target=${edit_target[$i]}
     content=${edit_content[$i]}
-    ctx_start=${edit_ctx_start[$i]}
-    ctx_end=${edit_ctx_end[$i]}
+    #ctx_start=${edit_ctx_start[$i]}
+    #ctx_end=${edit_ctx_end[$i]}
 
     # Copy untouched lines till the edit point
     tail -n +"$line_counter" "$file" | head -n $((from - line_counter)) >> "$temp_copy"
 
     # Validate context
-    if [[ "$from" == 1 ]]; then
-        if [[ "$ctx_start" != "" ]]; then
-            echo "Error: context_start must be empty if edit is at BOF. You passed: $ctx_start" >&2
-            exit 1
-        fi
-    else
-        real_ctx_start=$(sed != "$((from-1))"p "$file")
+    #if [[ "$from" == 1 ]]; then
+    #    if [[ "$ctx_start" != "" ]]; then
+    #        echo "Error: context_start must be empty if edit is at BOF. You passed: $ctx_start" >&2
+    #        exit 1
+    #    fi
+    #else
+    #    real_ctx_start=$(sed != "$((from-1))"p "$file")
+#
+#        if [[ "$ctx_start" != "$real_ctx_start" ]]; then
+#            echo "Error: invalid context_start found before line $from. Found: $real_ctx_start" >&2
+#            exit 1
+#        fi
+#    fi
 
-        if [[ "$ctx_start" != "$real_ctx_start" ]]; then
-            echo "Error: invalid context_start found before line $from. Found: $real_ctx_start" >&2
-            exit 1
-        fi
-    fi
-
-    if [[ "$op" != "insert" ]]; then
-        ctx_end_line="$((from+lc))"
-        real_ctx_end=$(sed -n "$ctx_end_line"p "$file")
-
-        if [[ "$ctx_end" != "$real_ctx_end" ]]; then
-            echo "Error: invalid context_end found at line $ctx_end_line. Found: $real_ctx_end" >&2
-            exit 1
-        fi
-    fi
+#    if [[ "$op" != "insert" ]]; then
+#        ctx_end_line="$((from+lc))"
+#        real_ctx_end=$(sed -n "$ctx_end_line"p "$file")
+#
+#        if [[ "$ctx_end" != "$real_ctx_end" ]]; then
+#            echo "Error: invalid context_end found at line $ctx_end_line. Found: $real_ctx_end" >&2
+#            exit 1
+#        fi
+#    fi
 
     # Validate target
-    real_target=$(tail -n +"$from" "$file" | head -n "$line_counter")
-
-    if [[ "$target" != "$real_target" ]]; then
-        echo "Error: invalid target text at line $from. Found: $real_target" >&2
-        exit 1
-    fi
+#    real_target=$(tail -n +"$from" "$file" | head -n "$line_counter")
+#
+#    if [[ "$target" != "$real_target" ]]; then
+#        echo "Error: invalid target text at line $from. Found: $real_target" >&2
+#        exit 1
+#    fi
 
     # Here we apply the operation.
     # Insert emits content and simply updates the line_counter.
@@ -318,11 +265,11 @@ for ((i=0; i<edits_count; i++)); do
 
     replace)
         echo "$content" >> "$temp_copy"
-        line_counter=$((from + lc))
+        line_counter=$((to + 1))
     ;;
 
     delete)
-        line_counter=$((from + lc))
+        line_counter=$((to + 1))
     ;;
 
     *)
