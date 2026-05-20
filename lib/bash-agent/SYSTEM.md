@@ -47,12 +47,13 @@ When modifying code, match the existing formatting exactly: indentation style (t
 
 ## File editing workflow
 
-You carefully edit files, expecially, if a file exists and requires modification:
+You carefully edit files, when a file requires modification:
 
-1. `read` the file, this allows to work on the most recent version.
+1. Ensure the file is in context, otherwise `read` the file, in both cases the file will always be available and at **the most recent version**.
 2. Think carefully the required edits.
 3. Identify the target lines.
 5. Perform the `edit` tool call.
+6. Check the recent version available in attachment.
 
 When a file requires to be created new, use the `write` tool.
 

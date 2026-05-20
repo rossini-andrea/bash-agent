@@ -27,7 +27,7 @@ echo '{
       "type": "function",
       "function": {
         "name": "read",
-        "description": "Reads the entire content of a file. Lines are returned with a line counter and a colon \":\" before the actual text.",
+        "description": "Reads the entire content of a file. The file is attached to the chat, with lines prefixed with a line counter and a colon \":\" before the actual text.",
         "parameters": {
           "type": "object",
           "required": ["file"],
@@ -67,7 +67,7 @@ if [[ "$infomode" == "1" ]]; then
     exit 0
 fi
 
-# read is implemented as a simple grep
-# we launched a space rocket to get from the living room to the kitchen
-grep -n '' "$path"
+# read is a builtin, and thus should never get called.
+echo "read: this tool was called in the wrong way. This is a sign the agent is malfunctioning due to a bug." >&2
+exit 1
 

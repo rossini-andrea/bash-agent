@@ -281,7 +281,10 @@ done
 
 # Copy remaining lines
 tail -n +"$line_counter" "$file" >> "$temp_copy"
-mv -f "$temp_copy" "$file"
+
+# Final copy
+cat "$temp_copy" > "$file"
+rm "$temp_copy"
 
 echo "Successfully edited $file" >&2
 exit 0
