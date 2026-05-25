@@ -69,7 +69,7 @@ if [[ "$infomode" == "1" ]]; then
     echo "**EXECUTE**"
     echo ""
     echo "\`\`\`bash"
-    echo "$command"
+    printf "%s\n" "$command"
     echo "\`\`\`"
     exit 0
 fi

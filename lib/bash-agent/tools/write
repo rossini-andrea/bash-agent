@@ -59,16 +59,17 @@ done
 shift $((OPTIND - 1))
 
 # Extract parameters
-file=$(echo "$@" | jq -r '.file')
-content=$(echo "$@" | jq -r '.content')
+file="$(echo "$@" | jq -r '.file')"
 
 # Infomode allows the tool to customize its tool calling log message.
 # Mandatory exit 0 for allowing the engine to ask the user for permission.
+# Infomode allows the tool to customize its tool calling log message.
+# Mandatory exit 0 for allowing the engine to ask the user for permission.
 if [[ "$infomode" == "1" ]]; then
-    echo "**WRITE** \`$file\`"
+    printf '%s\n' "**WRITE** \`$file\`"
     echo ""
     echo "\`\`\`"
-    echo "$content" | head -n 10
+    echo "$@" | jq -r '.content' | head -n 10
     echo "..."
     echo "\`\`\`"
 
@@ -78,6 +79,6 @@ fi
 #=============================
 # Your actual code goes here.
 #=============================
-echo "$content" > "$file"
+echo "$@" | jq -r '.content' > "$file"
 
 echo "Successfully wrote $file" >&2

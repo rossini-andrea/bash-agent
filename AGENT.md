@@ -49,6 +49,12 @@ Tools are stored in `$BA_PATH/tools/` directory and must:
 - Support `-h` flag for help (returns OpenAI function definition)
 - Support `-i` flag for infomode (interactive logging)
 
+### Builtins
+
+Builtins are tools with a placeholder script under `$BA_PATH/tools/` which
+handles help and infomode, but are implemented inside ba-shell. Current
+builtin is only `read`.
+
 ### Creating New Tools
 
 1. Copy `tool-template.sh` to `tools/your-tool-name`

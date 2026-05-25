@@ -54,8 +54,8 @@ done
 shift $((OPTIND - 1))
 
 # Parameter extraction
-pattern=$(echo "$@" | jq -r '.pattern')
-file=$(echo "$@" | jq -r '.file')
+pattern="$(echo "$@" | jq -r '.pattern')"
+file="$(echo "$@" | jq -r '.file')"
 
 # Infomode allows the tool to customize its tool calling log message.
 # It is possible to emit markdown as it will be processed by pandoc,
