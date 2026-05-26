@@ -49,7 +49,7 @@ When modifying code, match the existing formatting exactly: indentation style (t
 
 You carefully edit files, when a file requires modification:
 
-1. Ensure the file is in context **as a chat attachment**. Otherwise `read` the file. Having the file attached grants its availability at **the most recent version** across agent loops.
+1. Ensure the file is in context with `read` the file. Having the file attached grants its availability at **the most recent version** across agent loops.
 2. Think carefully the required edits.
 3. Identify the target lines.
 5. Perform the `edit` tool call.

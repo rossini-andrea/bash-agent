@@ -235,7 +235,8 @@ call_llm_updatecontext_and_print() {
 }
 
 # --- Call tool ---
-# Calls a tool, forcing a builtin implementation for the builtins (read).
+# Calls a tool, forcing a builtin implementation for the builtins
+# (read and edit).
 call_tool() {
     tool="$1"
 
@@ -244,17 +245,17 @@ call_tool() {
         path=$(echo "$2" | jq -r '.file')
         add_attachment "$path"
         echo "File $path was successfully attached."
-    else
-        "$BA_TOOLS_PATH"/"$tool" "$2"
+        return 0
+    elif [[ "$tool" == "edit" ]]; then
+        file=$(echo "$2" | jq -r '.file')
+
+        if [[ ! " ${attachments[*]} " =~ [[:space:]]${file}[[:space:]] ]]; then
+            echo "File must be read before edit: $file" >&2
+            return 1
+        fi
     fi
 
-    # After writing, we need to attach the
-    # file.
-    if [[ "$tool" == "write" ]]; then
-        path=$(echo "$2" | jq -r '.file')
-        add_attachment "$path"
-        echo "File $path was successfully attached."
-    fi
+    "$BA_TOOLS_PATH"/"$tool" "$2"
 }
 
 # --- Main Script Logic ---
