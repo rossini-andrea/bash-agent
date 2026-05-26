@@ -40,6 +40,7 @@ fi
 
 # Setup env vars
 declare -x BA_AUTO_APPROVE="${BA_AUTO_APPROVE:-N}"
+declare -x BA_ATTACHMENT_TTL="${BA_ATTACHMENT_TTL:-5}"
 
 # Setup temp files
 BA_AGENT_CONTEXT=$(mktemp --suffix=.json)
@@ -147,7 +148,7 @@ add_attachment() {
         fi
 
         attachments+=("$file")
-        attachments_ttl+=(5)
+        attachments_ttl+=($BA_ATTACHMENT_TTL)
     else
         echo "read: file not found $file" >&2
         return 1
