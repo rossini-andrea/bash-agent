@@ -143,12 +143,23 @@ add_attachment() {
     file="$1"
 
     if [[ -f "$file" ]]; then
-        if [[ " ${attachments[*]} " =~ [[:space:]]${file}[[:space:]] ]]; then
-            return 0
-        fi
+        found_index=-1
 
-        attachments+=("$file")
-        attachments_ttl+=($BA_ATTACHMENT_TTL)
+        # Search for the file in the attachments list.
+        # If we find it, reset its TTL.
+        for i in "${!attachments[@]}"; do
+            if [[ "${attachments[$i]}" == "$file" ]]; then
+                found_index=$i
+                break
+            fi
+        done
+
+        if (( found_index >= 0 )); then
+            attachments_ttl[$found_index]=$BA_ATTACHMENT_TTL
+        else
+            attachments+=("$file")
+            attachments_ttl+=($BA_ATTACHMENT_TTL)
+        fi
     else
         echo "read: file not found $file" >&2
         return 1
@@ -242,18 +253,29 @@ call_tool() {
     tool="$1"
 
     if [[ "$tool" == "read" ]]; then
-        # Extract path
+        # Read is builtin. Instead of reading the current state, the file is
+        # added to the list of live attachments.
         path=$(echo "$2" | jq -r '.file')
         add_attachment "$path"
         echo "File $path was successfully attached."
         return 0
     elif [[ "$tool" == "edit" ]]; then
+        # Edit requires engine validation, we can't allow the LLM to edit a
+        # file it doesn't know line numbers of.
         file=$(echo "$2" | jq -r '.file')
 
         if [[ ! " ${attachments[*]} " =~ [[:space:]]${file}[[:space:]] ]]; then
             echo "File must be read before edit: $file" >&2
             return 1
         fi
+
+        # The tool implementation is left simple, we enrich it here:
+        # * Add attachment will reset the TTL of the file we are touching.
+        # * An additional message to remind the LLM it doesn't need read.
+        add_attachment "$file"
+        "$BA_TOOLS_PATH"/"$tool" "$2"
+        echo "Remind the attachment is already the updated version."
+        return 0
     fi
 
     "$BA_TOOLS_PATH"/"$tool" "$2"
@@ -342,12 +364,16 @@ main() {
                     "$BA_TOOLS_PATH"/$name -i "$arguments" | mdcat
                 fi
 
-                if [[ $is_a_tty == "1" && $BA_AUTO_APPROVE != "Y" ]]; then
-                    set +e
-                    feedback=
-                    ask_approval feedback
-                    exit_status="$?"
-                    set -e
+                if [[ $is_a_tty == "1" ]]; then
+                    if [[ $BA_AUTO_APPROVE == "Y" ]]; then
+                        exit_status=0
+                    else
+                        set +e
+                        feedback=
+                        ask_approval feedback
+                        exit_status="$?"
+                        set -e
+                    fi
 
                     if [[ "$exit_status" == "0" ]]; then
                         set +e
@@ -355,6 +381,13 @@ main() {
                             > "$BA_AGENT_TOOL_STDOUT" \
                             2> "$BA_AGENT_TOOL_STDERR"
                         exit_status=$?
+
+                        if [[ "$exit_status" == "0" ]]; then
+                            log "OK"
+                        else
+                            log "Failed"
+                        fi
+
                         set -e
                     else
                         echo "" > "$BA_AGENT_TOOL_STDOUT"
