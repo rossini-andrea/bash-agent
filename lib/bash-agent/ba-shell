@@ -100,9 +100,10 @@ mdcat() {
 # Permanently attaches a file to the chat context
 attach() {
     ls "$1" &&
-        jq '.messages += [{role: "user", content: "\n\n--- File: " + $ARGS.positional[0] + " ---\n" + $ARGS.positional[1] }]' \
+        jq '.messages += [{role: "user", content: "\n\n--- File: " + $ARGS.positional[0] + " ---\n" + $content }]' \
         "$BA_AGENT_CONTEXT" \
-        --args -- "$1" "$(cat "$1")" > "$BA_AGENT_TEMP_CONTEXT" &&
+        --rawfile content "$1" \
+        --args -- "$1" > "$BA_AGENT_TEMP_CONTEXT" &&
         swap_context
 }
 
@@ -294,13 +295,13 @@ main() {
         reasoning_format: "auto",
         messages: [{
             role: "system",
-            content: $ARGS.positional[0]
+            content: $system
         }]
-    }' --args -- "$(cat "$BA_PATH"/SYSTEM.md)" > "$BA_AGENT_CONTEXT"
+    }' --rawfile system "$BA_PATH"/SYSTEM.md > "$BA_AGENT_CONTEXT"
 
     # Attach tool definitions to the context.
     for t in $(ls "$BA_TOOLS_PATH"); do
-        jq '.tools += [$ARGS.positional[0]]' "$BA_AGENT_CONTEXT" --jsonargs -- "$("$BA_TOOLS_PATH"/$t -h)" > "$BA_AGENT_TEMP_CONTEXT" && swap_context || log Ignoring tool: "$t"
+        jq '.tools += [$toolhelp[0]]' "$BA_AGENT_CONTEXT" --slurpfile toolhelp <("$BA_TOOLS_PATH/$t" -h) > "$BA_AGENT_TEMP_CONTEXT" && swap_context || log Ignoring tool: "$t"
     done
 
     # Attach agent instructions to the context
@@ -311,9 +312,9 @@ main() {
     # If the prompt is piped in, consume the entire stdin
     # and do a call
     if [[ ! $is_a_tty == "1" ]]; then
-        jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
+        jq '.messages += [{role: "user", content: $input }]' \
             "$BA_AGENT_CONTEXT" \
-            --args -- "$(cat)" > "$BA_AGENT_TEMP_CONTEXT"
+            --rawfile input /dev/stdin > "$BA_AGENT_TEMP_CONTEXT"
         swap_context
         call_llm_updatecontext_and_print
     fi
