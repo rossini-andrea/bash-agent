@@ -43,13 +43,15 @@ declare -x BA_AUTO_APPROVE="${BA_AUTO_APPROVE:-N}"
 declare -x BA_ATTACHMENT_TTL="${BA_ATTACHMENT_TTL:-5}"
 
 # Setup temp files
-BA_AGENT_CONTEXT=$(mktemp --suffix=.json)
-BA_AGENT_TEMP_CONTEXT=$(mktemp --suffix=.json)
-BA_AGENT_TOOL_STDOUT=$(mktemp --suffix=.txt)
-BA_AGENT_TOOL_STDERR=$(mktemp --suffix=.txt)
+BA_AGENT_TEMP_FOLDER="$(mktemp -p -d ba.tmp.XXXXXXXXXX)"
+BA_AGENT_CONTEXT="$BA_AGENT_TEMP_FOLDER"/context-a.json
+BA_AGENT_TEMP_CONTEXT="$BA_AGENT_TEMP_FOLDER"/context-b.json
+BA_AGENT_TOOL_STDOUT="$BA_AGENT_TEMP_FOLDER"/tool-stdout.txt
+BA_AGENT_TOOL_STDERR="$BA_AGENT_TEMP_FOLDER"/tool-stderr.txt
+response="$BA_AGENT_TEMP_FOLDER"/response.json
+answer="$BA_AGENT_TEMP_FOLDER"/answer.json
+tool_calls="$BA_AGENT_TEMP_FOLDER"/tool_calls.json
 
-response=
-answer=
 token_usage=0
 BA_LAST_MODEL=
 BA_LAST_SPEED=
@@ -71,10 +73,7 @@ log() {
 # --- Cleanup / Signal Handling ---
 # Run this when the script exits (normal or error)
 cleanup() {
-    rm "$BA_AGENT_CONTEXT"
-    rm "$BA_AGENT_TEMP_CONTEXT"
-    rm "$BA_AGENT_TOOL_STDOUT"
-    rm "$BA_AGENT_TOOL_STDERR"
+    rm -R "$BA_AGENT_TEMP_FOLDER"
 }
 trap cleanup EXIT
 
@@ -218,32 +217,30 @@ call_llm_updatecontext_and_print() {
     # Before sending, context should be trimmed
     trim_context
 
-    response=$( \
-        cat "$BA_AGENT_CONTEXT" | \
+    cat "$BA_AGENT_CONTEXT" | \
         jq '.messages += $messages[0]' \
         --slurpfile messages <(load_attachments) | \
-        "$BA_PATH"/ba-curl \
-    )
+        "$BA_PATH"/ba-curl > "$response"
 
-    answer="$(echo "$response" | jq '.choices[0].message | {role: .role, content: .content, reasoning_content: .reasoning_content, tool_calls: .tool_calls}')"
+    jq '.choices[0].message | {role: .role, content: .content, reasoning_content: .reasoning_content, tool_calls: .tool_calls}' "$response" > "$answer"
 
     # Extract model name and generation speed from response
-    BA_LAST_MODEL=$(echo "$response" | jq -r '.model // empty')
-    BA_LAST_PROMPT_SPEED=$(echo "$response" | jq -r '.timings.prompt_per_second // empty')
-    BA_LAST_SPEED=$(echo "$response" | jq -r '.timings.predicted_per_second // empty')
-    token_usage=$(echo "$response" | jq -r '.usage.prompt_tokens // empty')
+    BA_LAST_MODEL=$(jq -r '.model // empty' "$response")
+    BA_LAST_PROMPT_SPEED=$(jq -r '.timings.prompt_per_second // empty' "$response")
+    BA_LAST_SPEED=$(jq -r '.timings.predicted_per_second // empty' "$response")
+    token_usage=$(jq -r '.usage.prompt_tokens // empty' "$response")
 
     log "Token usage: $token_usage"
 
     # Update the context
-    jq '.messages += [ $ARGS.positional[0] ]' \
+    jq '.messages += [ $answer[0] ]' \
         $BA_AGENT_CONTEXT \
-        --jsonargs -- "$answer" > "$BA_AGENT_TEMP_CONTEXT"
+        --slurpfile answer "$answer" > "$BA_AGENT_TEMP_CONTEXT"
     swap_context
 
-    if [[ $(echo "$answer" | jq -r '.content | length') != "0" ]]; then
+    if [[ $(jq -r '.content | length' "$answer") != "0" ]]; then
         log ""
-        echo "$answer" | jq -r '.content' | mdcat
+        jq -r '.content' "$answer" | mdcat
     fi
 }
 
@@ -307,7 +304,7 @@ main() {
     # Attach agent instructions to the context
     attach_instructions > /dev/null 2>&1
 
-    answer="{}"
+    echo "{}" > "$answer"
 
     # If the prompt is piped in, consume the entire stdin
     # and do a call
@@ -322,8 +319,8 @@ main() {
     # --- MAIN SHELL LOOP ---
     while true
     do
-        tool_calls=$(echo "$answer" | jq '.tool_calls')
-        tool_calls_len=$(echo "$tool_calls" | jq '. | length')
+        jq '.tool_calls' "$answer" > "$tool_calls"
+        tool_calls_len=$(jq '. | length' "$tool_calls")
 
         if [[ "$tool_calls_len" == "0" && $is_a_tty == "1" ]]; then
             # Read user prompt if there is no tool call
@@ -348,15 +345,11 @@ main() {
             exit 0
         else
             # Call all tools requested by the LLM
-            while [[ "$tool_calls_len" != "0" ]]; do
+            for ((i=0; i<tool_calls_len; i++)); do
                 # Extract data from the first item
-                name=$(echo "$tool_calls" | jq -r '""+.[0].function.name')
-                tool_call_id=$(echo "$tool_calls" | jq -r '""+.[0].id')
-                arguments=$(echo "$tool_calls" | jq -r '""+.[0].function.arguments')
-
-                # Drop the first item
-                tool_calls=$(echo "$tool_calls" | jq '.[1:]')
-                tool_calls_len=$(echo "$tool_calls" | jq '. | length')
+                name=$(jq -r '""+.['$i'].function.name' "$tool_calls")
+                tool_call_id=$(jq -r '""+.['$i'].id' "$tool_calls")
+                arguments=$(jq -r '""+.['$i'].function.arguments' "$tool_calls")
 
                 exit_status=
 
