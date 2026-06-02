@@ -43,7 +43,7 @@ declare -x BA_AUTO_APPROVE="${BA_AUTO_APPROVE:-N}"
 declare -x BA_ATTACHMENT_TTL="${BA_ATTACHMENT_TTL:-5}"
 
 # Setup temp files
-BA_AGENT_TEMP_FOLDER="$(mktemp -p -d ba.tmp.XXXXXXXXXX)"
+BA_AGENT_TEMP_FOLDER="$(mktemp -d --suffix=.bash-agent)"
 BA_AGENT_CONTEXT="$BA_AGENT_TEMP_FOLDER"/context-a.json
 BA_AGENT_TEMP_CONTEXT="$BA_AGENT_TEMP_FOLDER"/context-b.json
 BA_AGENT_TOOL_STDOUT="$BA_AGENT_TEMP_FOLDER"/tool-stdout.txt
@@ -80,6 +80,7 @@ trap cleanup EXIT
 # --- Swap context ---
 # Swap the file usage for contex/temp context
 swap_context() {
+    local c
     c="$BA_AGENT_CONTEXT"
     BA_AGENT_CONTEXT="$BA_AGENT_TEMP_CONTEXT"
     BA_AGENT_TEMP_CONTEXT="$c"
@@ -122,6 +123,7 @@ attach_instructions() {
 # Loads the files specified in the attachments array, and builds a series of
 # messages with the file contents.
 load_attachments() {
+    local messages
     messages='[]'
 
     for f in "${attachments[@]}"; do
@@ -140,6 +142,7 @@ load_attachments() {
 # --- Add attachment ---
 # Adds a file to the list of the attachments
 add_attachment() {
+    local i file found_index
     file="$1"
 
     if [[ -f "$file" ]]; then
@@ -173,6 +176,7 @@ add_attachment() {
 # steering feedback.
 ask_approval() {
     local -n retval="$1"
+    local approval
 
     approval=""
 
@@ -193,6 +197,7 @@ ask_approval() {
 
 # --- Trim context ---
 trim_context() {
+    local i
     # Drop attachments older than 5 turns
     # TODO: Drop messages older than 10 turns
     # TODO: Compact context every 10 messages.
@@ -248,6 +253,7 @@ call_llm_updatecontext_and_print() {
 # Calls a tool, forcing a builtin implementation for the builtins
 # (read and edit).
 call_tool() {
+    local tool path file
     tool="$1"
 
     if [[ "$tool" == "read" ]]; then
@@ -297,6 +303,7 @@ main() {
     }' --rawfile system "$BA_PATH"/SYSTEM.md > "$BA_AGENT_CONTEXT"
 
     # Attach tool definitions to the context.
+    local t
     for t in $(ls "$BA_TOOLS_PATH"); do
         jq '.tools += [$toolhelp[0]]' "$BA_AGENT_CONTEXT" --slurpfile toolhelp <("$BA_TOOLS_PATH/$t" -h) > "$BA_AGENT_TEMP_CONTEXT" && swap_context || log Ignoring tool: "$t"
     done
@@ -345,6 +352,7 @@ main() {
             exit 0
         else
             # Call all tools requested by the LLM
+            local i name tool_call_id arguments feedback
             for ((i=0; i<tool_calls_len; i++)); do
                 # Extract data from the first item
                 name=$(jq -r '""+.['$i'].function.name' "$tool_calls")
