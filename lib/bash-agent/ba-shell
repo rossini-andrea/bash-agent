@@ -251,7 +251,8 @@ call_llm_updatecontext_and_print() {
 
 # --- Call tool ---
 # Calls a tool, forcing a builtin implementation for the builtins
-# (read and edit).
+# (read and edit). Since this function is likely called with +e, we test every
+# interesting program call.
 call_tool() {
     local tool path file
     tool="$1"
@@ -260,7 +261,11 @@ call_tool() {
         # Read is builtin. Instead of reading the current state, the file is
         # added to the list of live attachments.
         path=$(echo "$2" | jq -r '.file')
-        add_attachment "$path"
+
+        if ! add_attachment "$path" ; then
+            return 1
+        fi
+
         echo "File $path was successfully attached."
         return 0
     elif [[ "$tool" == "edit" ]]; then
@@ -277,7 +282,11 @@ call_tool() {
         # * Add attachment will reset the TTL of the file we are touching.
         # * An additional message to remind the LLM it doesn't need read.
         add_attachment "$file"
-        "$BA_TOOLS_PATH"/"$tool" "$2"
+
+        if ! "$BA_TOOLS_PATH"/"$tool" "$2" ; then
+            return 1
+        fi
+
         echo "Remind the attachment is already the updated version."
         return 0
     fi
