@@ -314,7 +314,10 @@ main() {
     # Attach tool definitions to the context.
     local t
     for t in $(ls "$BA_TOOLS_PATH"); do
-        jq '.tools += [$toolhelp[0]]' "$BA_AGENT_CONTEXT" --slurpfile toolhelp <("$BA_TOOLS_PATH/$t" -h) > "$BA_AGENT_TEMP_CONTEXT" && swap_context || log Ignoring tool: "$t"
+        jq '.tools += [$toolhelp[0]]' "$BA_AGENT_CONTEXT" \
+            --slurpfile toolhelp <("$BA_TOOLS_PATH/$t" -h) \
+            > "$BA_AGENT_TEMP_CONTEXT" && swap_context || \
+            log Ignoring tool: "$t"
     done
 
     # Attach agent instructions to the context
