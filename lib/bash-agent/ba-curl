@@ -16,10 +16,26 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-exec curl http://localhost:41080/v1/chat/completions \
+case "$1" in
+POST)
+    exec curl http://localhost:41080"$2" \
         -H "Content-Type: application/json" \
         -H "Accept: application/json" \
         -d @- \
         --silent \
         --connect-timeout 20 --keepalive-time 7000 --max-time 7000
+    ;;
+GET)
+    exec curl http://localhost:41080"$2" \
+        -H "Accept: application/json" \
+        --silent \
+        --connect-timeout 20 --keepalive-time 7000 --max-time 7000
+    ;;
+STREAM)
+    ;;
+*)
+    echo "Unsupported method $1" >&2
+    return 1
+    ;;
+esac
 

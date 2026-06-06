@@ -26,8 +26,12 @@ set -o pipefail
 # Disable globbing for safety (optional, but good for file handling)
 set -f
 
+# Source libraries
+source "$BA_PATH"/slash-commands.sh
+
 # Feature switches
 enable_pandoc=
+enable_thinking="true"
 
 # Detect input source
 is_a_tty=
@@ -223,9 +227,10 @@ call_llm_updatecontext_and_print() {
     trim_context
 
     cat "$BA_AGENT_CONTEXT" | \
-        jq '.messages += $messages[0]' \
-        --slurpfile messages <(load_attachments) | \
-        "$BA_PATH"/ba-curl > "$response"
+        jq '.messages += $messages[0] | .chat_template_kwargs = {enable_thinking: $ARGS.positional[0]}' \
+        --slurpfile messages <(load_attachments) \
+        --jsonargs -- "$enable_thinking" | \
+        "$BA_PATH"/ba-curl POST /v1/chat/completions > "$response"
 
     jq '.choices[0].message | {role: .role, content: .content, reasoning_content: .reasoning_content, tool_calls: .tool_calls}' "$response" > "$answer"
 
@@ -354,6 +359,12 @@ main() {
             while [[ -z "$prompt" ]]; do
                 read -r -e -p "> " prompt
             done
+
+            # Slash command handling
+            if [[ "$prompt" == /* ]]; then
+                handle_slash_command "$prompt"
+                continue  # Skip LLM call, go back to top of loop
+            fi
 
             jq '.messages += [{role: "user", content: $ARGS.positional[0] }]' \
                 "$BA_AGENT_CONTEXT" \

@@ -13,6 +13,7 @@ This project implements a Bash-based AI agent framework that allows an LLM to in
 * bash-agent - Jumpstart script that sets up env vars
 * lib/bash-agent/ba-curl - Wrapper for making HTTP requests to the LLM server
 * lib/bash-agent/ba-shell - Main entry point that orchestrates the agent loop
+* lib/bash-agent/slash-commands.sh - `source`d script for handling client side commands
 * lib/bash-agent/tools/edit - Precise file edits
 * lib/bash-agent/tools/execute - Tool to run bash commands
 * lib/bash-agent/tools/find - File search tool
